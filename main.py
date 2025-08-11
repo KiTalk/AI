@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config.settings import settings, logger
+from config.naver_stt_settings import settings, logger
 from routers import stt, health
+from routers.logic_router import router as logic_router
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -22,6 +23,7 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(stt.router)
 app.include_router(health.router)
+app.include_router(logic_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 
