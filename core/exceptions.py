@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from config.settings import logger
+from config.naver_stt_settings import logger
 
 class STTException(Exception):
     """STT 관련 커스텀 예외"""
@@ -34,7 +34,7 @@ def handle_stt_errors(result: dict) -> JSONResponse:
 
 def validate_audio_file(audio_data: bytes, filename: str = None) -> None:
     """오디오 파일 유효성 검사"""
-    from config.settings import settings
+    from config.naver_stt_settings import settings
     
     if len(audio_data) == 0:
         raise HTTPException(status_code=400, detail="비어있는 오디오 파일입니다.")
@@ -50,7 +50,7 @@ def validate_audio_file(audio_data: bytes, filename: str = None) -> None:
 
 def validate_language(lang: str) -> None:
     """언어 유효성 검사"""
-    from config.settings import settings
+    from config.naver_stt_settings import settings
     
     if lang not in settings.SUPPORTED_LANGUAGES:
         raise HTTPException(
