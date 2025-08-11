@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from models.stt_models import HealthResponse, LanguagesResponse, LanguageInfo
-from config.settings import settings
+from config.naver_stt_settings import settings
 
 router = APIRouter(tags=["Health"])
 

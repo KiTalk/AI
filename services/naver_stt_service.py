@@ -1,5 +1,5 @@
 import requests
-from config.settings import settings, logger
+from config.naver_stt_settings import settings, logger
 from models.stt_models import STTResponse
 
 class NaverSTTService:

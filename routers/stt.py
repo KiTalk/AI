@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from services.naver_stt_service import NaverSTTService
-from utils.exceptions import validate_audio_file, validate_language, handle_stt_errors
-from config.settings import logger
+from core.exceptions import validate_audio_file, validate_language, handle_stt_errors
+from config.naver_stt_settings import logger
 
 router = APIRouter(prefix="/stt", tags=["STT"])
 
