@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config.naver_stt_settings import settings, logger
 from routers import stt, health
+from routers.order_at_once import router as order_router
 from routers.logic_router import router as logic_router
 
 # FastAPI 앱 생성
@@ -23,10 +24,11 @@ app.add_middleware(
 # 라우터 등록
 app.include_router(stt.router)
 app.include_router(health.router)
+app.include_router(order_router)
 app.include_router(logic_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
