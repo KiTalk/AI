@@ -1,12 +1,12 @@
 from fastapi import HTTPException
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
-import difflib
 from fuzzywuzzy import fuzz
 import json
 import os
 import re
 from typing import Union
+from .redis_session_service import redis_session_manager
 
 # Qdrant 클라이언트 초기화
 client = QdrantClient(url="http://localhost:6333")
@@ -58,11 +58,31 @@ def search_menu(menu_item: str) -> str | None:
 
     return None
 
-def process_menu(menu_item: str) -> str:
-    found = search_menu(menu_item)
-    if not found:
+def process_menu(session_id: str, menu_item: str) -> str:
+    # 세션 확인
+    session = redis_session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="유효하지 않은 세션입니다.")
+
+    if session["step"] != "started":
+        raise HTTPException(status_code=400, detail="현재 메뉴 선택 단계가 아닙니다.")
+
+    # 메뉴 검색
+    menu = search_menu(menu_item)
+    if not menu:
         raise HTTPException(status_code=404, detail="메뉴를 찾을 수 없습니다.")
-    return f"'{found}' 메뉴가 선택되었습니다."
+
+    # Redis 세션 업데이트
+    success = redis_session_manager.update_session(
+        session_id,
+        "menu",
+        {"menu_item": menu}
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="세션 업데이트에 실패했습니다.")
+
+    return f"'{menu}'"
 
 # 수량 패턴 설정
 def load_quantity_config():
@@ -94,7 +114,16 @@ def parse_quantity_from_text(text: str) -> int:
 
     raise ValueError("수량을 인식할 수 없습니다")
 
-def process_quantity(quantity_input: Union[int, str]) -> str:
+def process_quantity(session_id: str, quantity_input: Union[int, str]) -> str:
+    # 세션 확인
+    session = redis_session_manager.get_session(session_id)
+
+    if not session:
+        raise HTTPException(status_code=404, detail="유효하지 않은 세션입니다.")
+
+    if session["step"] != "menu":
+        raise HTTPException(status_code=400, detail="현재 수량 선택 단계가 아닙니다.")
+
     try:
         if isinstance(quantity_input, str):
             # 자연어 텍스트인 경우 파싱 (ValueError 발생 가능)
@@ -107,6 +136,15 @@ def process_quantity(quantity_input: Union[int, str]) -> str:
         # 기존 검증 로직 유지
         if quantity <= 0:
             raise HTTPException(status_code=400, detail="수량은 1 이상이어야 합니다.")
+
+        success = redis_session_manager.update_session(
+            session_id,
+            "packaging",
+            {"quantity": quantity}
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="세션 업데이트에 실패했습니다.")
 
         return f"{quantity}"
 
