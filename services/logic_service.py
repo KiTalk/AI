@@ -139,7 +139,7 @@ def process_quantity(session_id: str, quantity_input: Union[int, str]) -> str:
 
         success = redis_session_manager.update_session(
             session_id,
-            "packaging",
+            "quantity",
             {"quantity": quantity}
         )
 
