@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from services.logic_service import process_menu, process_quantity
-from models.logic_model import StartOrderRequest, MenuRequest, QuantityRequest
+from services.logic_service import process_menu, process_quantity, process_packaging
+from models.logic_model import MenuRequest, QuantityRequest, PackagingRequest
 from services.redis_session_service import session_manager
 
 router = APIRouter(
@@ -55,4 +55,24 @@ async def choose_quantity(session_id, q: QuantityRequest):
             "current_step": "quantity",
             "next_step": "수량 다시 선택", #같은 단계
             "retry": True  # 재시도
+        }
+
+
+@router.post("/packaging/{session_id}")
+async def choose_packaging(session_id: str, p: PackagingRequest):
+    try:
+        msg = process_packaging(session_id, p.packaging_type)
+        return {
+            "packaging": msg,
+            "session_id": session_id,
+            "current_step": "completed",  # 주문 완료
+            "next_step": "주문 완료"
+        }
+    except HTTPException as e:
+        return {
+            "message": e.detail,
+            "session_id": session_id,
+            "current_step": "packaging",
+            "next_step": "포장 방식을 다시 선택",
+            "retry": True
         }

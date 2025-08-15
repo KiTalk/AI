@@ -25,3 +25,14 @@ class QuantityRequest(BaseModel):
                 "quantity": "2개"
             }
         }
+
+
+class PackagingRequest(BaseModel):
+    packaging_type: str = Field(..., description="포장 방식")
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "packaging_type": "포장"
+            }
+        }

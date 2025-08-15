@@ -150,3 +150,75 @@ def process_quantity(session_id: str, quantity_input: Union[int, str]) -> str:
 
     except ValueError:
         raise HTTPException(status_code=400, detail="수량을 정확히 말씀해주세요. (예: 2개, 한잔, 다섯개)")
+
+# 포장 방식 벡터 검색
+def search_packaging(packaging_text: str) -> str | None:
+    try:
+        query_vector = model.encode([packaging_text])[0]
+
+        results = client.query_points(
+            collection_name="packaging_options",  # 포장 옵션 컬렉션
+            query=query_vector.tolist(),
+            limit=3,
+            score_threshold=0.2
+        )
+
+        if results.points:
+            enhanced_results = []
+            for result in results.points:
+                packaging_name = result.payload['packaging_item']
+                packaging_type = result.payload['type']
+                vector_score = result.score
+
+                # 여러 fuzzy 점수 계산
+                ratio_score = fuzz.ratio(packaging_text, packaging_name) / 100
+                partial_score = fuzz.partial_ratio(packaging_text, packaging_name) / 100
+                token_score = fuzz.token_sort_ratio(packaging_text, packaging_name) / 100
+
+                # 최고 fuzzy 점수 선택
+                best_fuzzy = max(ratio_score, partial_score, token_score)
+
+                # 결합 점수
+                final_score = 0.7 * vector_score + 0.3 * best_fuzzy
+
+                enhanced_results.append((packaging_type, final_score, vector_score, best_fuzzy))
+
+            enhanced_results.sort(key=lambda x: x[1], reverse=True)
+
+            print(f"'{packaging_text}' 포장 검색:")
+            for packaging, final, vector, fuzzy in enhanced_results:
+                print(f"  - {packaging}: 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
+
+            if enhanced_results[0][1] >= 0.45:  # 낮은 임계값
+                return enhanced_results[0][0]  # 실제 포장 타입 반환 ("포장" 또는 "매장식사")
+
+    except Exception as e:
+        print(f"포장 검색 중 오류: {e}")
+
+    return None
+
+# 포장 방식 선택 처리
+def process_packaging(session_id: str, packaging_type: str) -> str:
+    session = redis_session_manager.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="유효하지 않은 세션입니다.")
+
+    if session["step"] != "quantity":
+        raise HTTPException(status_code=400, detail="현재 포장 선택 단계가 아닙니다.")
+
+    # 벡터 검색으로 포장 방식 인식
+    packaging = search_packaging(packaging_type)
+    if not packaging:
+        raise HTTPException(status_code=404, detail="포장 방식을 인식할 수 없습니다. (예: 포장, 매장식사)")
+
+    # Redis 세션 업데이트 (완료 단계로)
+    success = redis_session_manager.update_session(
+        session_id,
+        "packaging",
+        {"packaging_type": packaging}
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="세션 업데이트에 실패했습니다.")
+
+    return f"{packaging}"
