@@ -1,11 +1,12 @@
 from fastapi import HTTPException
+from pyexpat.errors import messages
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from fuzzywuzzy import fuzz
 import json
 import os
 import re
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Dict, Any
 from .redis_session_service import redis_session_manager
 
 # Qdrant 클라이언트 초기화
@@ -14,7 +15,7 @@ client = QdrantClient(url="http://localhost:6333")
 # SentenceTransformer 모델 초기화
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
-def search_menu(menu_item: str) -> str | None:
+def search_menu(menu_item: str) -> Dict[str, Any] | None:
     try:
         query_vector = model.encode([menu_item])[0]
 
@@ -29,6 +30,7 @@ def search_menu(menu_item: str) -> str | None:
             enhanced_results = []
             for result in results.points:
                 menu_name = result.payload['menu_item']
+                price = result.payload['price']
                 vector_score = result.score
 
                 # 여러 fuzzy 점수 계산
@@ -42,16 +44,19 @@ def search_menu(menu_item: str) -> str | None:
                 # 결합 점수
                 final_score = 0.7 * vector_score + 0.3 * best_fuzzy
 
-                enhanced_results.append((menu_name, final_score, vector_score, best_fuzzy))
+                enhanced_results.append((menu_name, price, final_score, vector_score, best_fuzzy))
 
-            enhanced_results.sort(key=lambda x: x[1], reverse=True)
+            enhanced_results.sort(key=lambda x: x[2], reverse=True)
 
             print(f"'{menu_item}' 실용적 검색:")
-            for menu, final, vector, fuzzy in enhanced_results:
-                print(f"  - {menu}: 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
+            for menu, price, final, vector, fuzzy in enhanced_results:
+                print(f"  - {menu}({price}원): 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
 
-            if enhanced_results[0][1] >= 0.45:  # 낮은 임계값
-                return enhanced_results[0][0]
+            if enhanced_results[0][2] >= 0.45:
+                return {
+                    "menu_item": enhanced_results[0][0],
+                    "price": enhanced_results[0][1]
+                }
 
     except Exception as e:
         print(f"검색 중 오류: {e}")
@@ -89,7 +94,7 @@ def parse_quantity_from_text(text: str) -> Optional[int]:
     return None
 
 # 메뉴와 수량을 함께 처리하는 함수
-def process_order(session_id: str, order_text: str) -> str:
+def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
     # 세션 확인
     session = redis_session_manager.get_session(session_id)
     if not session:
@@ -103,7 +108,18 @@ def process_order(session_id: str, order_text: str) -> str:
     individual_orders = split_multiple_orders(order_text)
     print(f"주문 분리: {individual_orders}")
 
-    return process_multiple_orders(session_id, individual_orders)
+    message = process_multiple_orders(session_id, individual_orders)
+    updated_session = redis_session_manager.get_session(session_id)
+    orders = updated_session["data"]["orders"]
+    total_items = updated_session["data"]["total_items"]
+    total_price = sum(order["price"] * order["quantity"] for order in orders)
+
+    return {
+        "message": message,
+        "orders": orders,
+        "total_items": total_items,
+        "total_price": total_price
+    }
 
 # 개별 주문으로 분리
 def split_multiple_orders(order_text: str) -> List[str]:
@@ -191,7 +207,8 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> str:
             continue
 
         successful_orders.append({
-            "menu_item": menu,
+            "menu_item": menu["menu_item"],
+            "price": menu["price"],
             "quantity": quantity,
             "original": order
         })
