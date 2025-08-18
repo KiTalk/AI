@@ -1,13 +1,25 @@
-from fastapi import HTTPException
-from pyexpat.errors import messages
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from fuzzywuzzy import fuzz
 import json
 import os
 import re
+import logging
 from typing import Tuple, List, Optional, Dict, Any
 from .redis_session_service import redis_session_manager
+from core.exceptions.logic_exceptions import (
+    MenuNotFoundException,
+    OrderParsingException,
+    PackagingNotFoundException,
+)
+from core.exceptions.session_exceptions import (
+    SessionNotFoundException,
+    InvalidSessionStepException,
+    SessionUpdateFailedException
+)
+
+# 로거 설정
+logger = logging.getLogger(__name__)
 
 # Qdrant 클라이언트 초기화
 client = QdrantClient(url="http://localhost:6333")
@@ -15,7 +27,38 @@ client = QdrantClient(url="http://localhost:6333")
 # SentenceTransformer 모델 초기화
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
-def search_menu(menu_item: str) -> Dict[str, Any] | None:
+# 설정 캐시
+_config_cache = None
+
+# config 로딩
+def load_quantity_config():
+    global _config_cache
+
+    if _config_cache is not None:
+        return _config_cache
+
+    try:
+        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
+        config_file = os.path.join(config_dir, 'quantity_patterns.json')
+
+        with open(config_file, 'r', encoding='utf-8') as f:
+            _config_cache = json.load(f)
+            return _config_cache
+
+    except FileNotFoundError:
+        logger.error(f"설정 파일을 찾을 수 없습니다: {config_file}")
+        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
+
+    except json.JSONDecodeError as e:
+        logger.error(f"설정 파일 JSON 파싱 오류: {e}")
+        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
+
+    except Exception as e:
+        logger.error(f"설정 파일 로드 실패: {e}")
+        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
+
+# 메뉴 찾기
+def search_menu(menu_item: str) -> Dict[str, Any]:
     try:
         query_vector = model.encode([menu_item])[0]
 
@@ -26,57 +69,57 @@ def search_menu(menu_item: str) -> Dict[str, Any] | None:
             score_threshold=0.2
         )
 
-        if results.points:
-            enhanced_results = []
-            for result in results.points:
-                menu_name = result.payload['menu_item']
-                price = result.payload['price']
-                vector_score = result.score
+        # 메뉴 찾지 못했을 때
+        if not results.points:
+            raise MenuNotFoundException(menu_item)
 
-                # 여러 fuzzy 점수 계산
-                ratio_score = fuzz.ratio(menu_item, menu_name) / 100
-                partial_score = fuzz.partial_ratio(menu_item, menu_name) / 100
-                token_score = fuzz.token_sort_ratio(menu_item, menu_name) / 100
+        enhanced_results = []
+        for result in results.points:
+            menu_name = result.payload['menu_item']
+            price = result.payload['price']
+            vector_score = result.score
 
-                # 최고 fuzzy 점수 선택
-                best_fuzzy = max(ratio_score, partial_score, token_score)
+            # 여러 fuzzy 점수 계산
+            ratio_score = fuzz.ratio(menu_item, menu_name) / 100
+            partial_score = fuzz.partial_ratio(menu_item, menu_name) / 100
+            token_score = fuzz.token_sort_ratio(menu_item, menu_name) / 100
 
-                # 결합 점수
-                final_score = 0.7 * vector_score + 0.3 * best_fuzzy
+            # 최고 fuzzy 점수 선택
+            best_fuzzy = max(ratio_score, partial_score, token_score)
 
-                enhanced_results.append((menu_name, price, final_score, vector_score, best_fuzzy))
+            # 결합 점수
+            final_score = 0.7 * vector_score + 0.3 * best_fuzzy
 
-            enhanced_results.sort(key=lambda x: x[2], reverse=True)
+            enhanced_results.append((menu_name, price, final_score, vector_score, best_fuzzy))
 
-            print(f"'{menu_item}' 실용적 검색:")
-            for menu, price, final, vector, fuzzy in enhanced_results:
-                print(f"  - {menu}({price}원): 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
+        enhanced_results.sort(key=lambda x: x[2], reverse=True)
 
-            if enhanced_results[0][2] >= 0.45:
-                return {
-                    "menu_item": enhanced_results[0][0],
-                    "price": enhanced_results[0][1]
-                }
+        logger.info(f"'{menu_item}' 실용적 검색:")
+
+        for menu, price, final, vector, fuzzy in enhanced_results:
+            logger.info(f"  - {menu}({price}원): 최종={final:.3f}")
+
+        if enhanced_results[0][2] >= 0.45:
+            return {
+                "menu_item": enhanced_results[0][0],
+                "price": enhanced_results[0][1]
+            }
+        else:
+            raise MenuNotFoundException(menu_item)
+
+    except MenuNotFoundException:
+        raise
+
+    except ConnectionError as e:
+        logger.error(f"벡터 DB 연결 실패: {e}")
+        raise MenuNotFoundException(f"{menu_item} (검색 서비스 오류)")
 
     except Exception as e:
-        print(f"검색 중 오류: {e}")
-
-    return None
-
-# 수량 패턴 설정
-def load_quantity_config():
-    try:
-        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
-        config_file = os.path.join(config_dir, 'quantity_patterns.json')
-
-        with open(config_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"설정 파일 로드 실패: {e}")
-        return {}
+        logger.error(f"메뉴 검색 중 예상치 못한 오류: {e}")
+        raise MenuNotFoundException(f"{menu_item} (검색 오류)")
 
 # 자연어 수량 파싱 함수
-def parse_quantity_from_text(text: str) -> Optional[int]:
+def parse_quantity_from_text(text: str) -> int:
     text = text.strip().lower()
     config = load_quantity_config()
 
@@ -86,40 +129,52 @@ def parse_quantity_from_text(text: str) -> Optional[int]:
         return int(number_match.group())
 
     # 2. config 파일의 한글 숫자 확인
-    korean_numbers = config["korean_numbers"]
+    korean_numbers = config.get("korean_numbers", {})
+
     for korean_word in korean_numbers:
         if korean_word in text:
             return korean_numbers[korean_word]
 
-    return None
+    return 0
 
 # 메뉴와 수량을 함께 처리하는 함수
 def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
-    # 세션 확인
-    session = redis_session_manager.get_session(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="유효하지 않은 세션입니다.")
+    try:
+        session = redis_session_manager.get_session(session_id)
+        if not session:
+            raise SessionNotFoundException(session_id)
 
-    # started 단계에서만 실행 가능
-    if session["step"] != "started":
-        raise HTTPException(status_code=400, detail="현재 주문 입력 단계가 아닙니다.")
+        # started 단계에서만 실행 가능
+        if session["step"] != "started":
+            raise InvalidSessionStepException(session["step"], "started")
 
-    # 주문 분리
-    individual_orders = split_multiple_orders(order_text)
-    print(f"주문 분리: {individual_orders}")
+        # 주문 분리
+        individual_orders = split_multiple_orders(order_text)
+        print(f"주문 분리: {individual_orders}")
 
-    message = process_multiple_orders(session_id, individual_orders)
-    updated_session = redis_session_manager.get_session(session_id)
-    orders = updated_session["data"]["orders"]
-    total_items = updated_session["data"]["total_items"]
-    total_price = sum(order["price"] * order["quantity"] for order in orders)
+        message = process_multiple_orders(session_id, individual_orders)
 
-    return {
-        "message": message,
-        "orders": orders,
-        "total_items": total_items,
-        "total_price": total_price
-    }
+        updated_session = redis_session_manager.get_session(session_id)
+        if not updated_session:
+            raise SessionUpdateFailedException(session_id, "세션 조회")
+
+        orders = updated_session["data"]["orders"]
+        total_items = updated_session["data"]["total_items"]
+        total_price = sum(order["price"] * order["quantity"] for order in orders)
+
+        return {
+            "message": message,
+            "orders": orders,
+            "total_items": total_items,
+            "total_price": total_price
+        }
+
+    except (MenuNotFoundException, OrderParsingException,
+            SessionUpdateFailedException, InvalidSessionStepException, SessionNotFoundException):
+        raise
+    except Exception as e:
+        logger.error(f"주문 처리 중 예상치 못한 오류: {e}")
+        raise OrderParsingException("주문 처리 중 오류가 발생했습니다")
 
 # 개별 주문으로 분리
 def split_multiple_orders(order_text: str) -> List[str]:
@@ -169,7 +224,7 @@ def split_multiple_orders(order_text: str) -> List[str]:
                 menu, qty = match
                 parsed_orders.append(f"{menu.strip()} {qty}")
 
-        print(f"패턴 기반 분리: '{order_text}' → {parsed_orders}")
+        logger.info(f"패턴 기반 분리: '{order_text}' → {parsed_orders}")
         return parsed_orders
 
     # 분리할 수 없으면 원본 반환
@@ -177,104 +232,83 @@ def split_multiple_orders(order_text: str) -> List[str]:
 
 # 다중 주문 처리
 def process_multiple_orders(session_id: str, orders: List[str]) -> str:
+    # 원본 세션 백업
+    original_session = redis_session_manager.get_session(session_id)
+    if not original_session:
+        raise SessionNotFoundException(session_id)
+
     successful_orders = []
     failed_orders = []
 
-    # 각 주문을 개별 처리
-    for order in orders:
-        menu_text, quantity, error_type = parse_single_order(order)
+    try:
+        for order in orders:
+            try:
+                validated_order = validate_single_order_simplified(order)
+                successful_orders.append(validated_order)
+            except MenuNotFoundException:
+                failed_orders.append(f"'{order}': 메뉴를 찾을 수 없습니다")
+            except Exception as e:
+                # 기타 예외도 관대하게 처리
+                logger.warning(f"주문 '{order}' 처리 중 오류: {e}")
+                failed_orders.append(f"'{order}': 처리할 수 없습니다")
 
-        if error_type != "success":
-            if error_type == "수량 없음":
-                failed_orders.append(f"'{order}': 수량을 다시 말씀해주세요")
-            elif error_type == "메뉴 없음":
-                failed_orders.append(f"'{order}': 메뉴를 다시 말씀해주세요")
-            elif error_type == "아예 인식 안됨":
-                failed_orders.append(f"'{order}': 다시 말씀해주세요")
+        # 하나라도 성공하면 진행 (기존에는 모든 주문이 성공해야 했음)
+        if not successful_orders:
+            raise OrderParsingException("인식할 수 있는 메뉴가 없습니다")
+
+        # 세션 업데이트
+        total_items = sum(order["quantity"] for order in successful_orders)
+
+        success = redis_session_manager.update_session(
+            session_id,
+            "packaging",
+            {
+                "orders": successful_orders,
+                "total_items": total_items,
+                "menu_item": None,  # 명시적 제거
+                "quantity": None  # 명시적 제거
+            }
+        )
+
+        if not success:
+            raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
+
+        # 메시지 생성 (수량 0 처리 포함)
+        order_summary = []
+        for order in successful_orders:
+            if order["quantity"] == 0:
+                order_summary.append(f"'{order['menu_item']}' (수량 미지정)")
             else:
-                failed_orders.append(f"'{order}': 주문을 인식할 수 없습니다")
-            continue
+                order_summary.append(f"'{order['menu_item']}' {order['quantity']}개")
 
-        # 메뉴 검색
-        menu = search_menu(menu_text)
-        if not menu:
-            failed_orders.append(f"'{order}': '{menu_text}' 메뉴를 찾을 수 없습니다.")
-            continue
+        message = f"다음 주문이 접수되었습니다: {', '.join(order_summary)}"
 
-        # 수량 검증
-        if quantity <= 0:
-            failed_orders.append(f"'{order}': 수량은 1 이상이어야 합니다.")
-            continue
+        # 실패한 주문이 있어도 성공한 것들은 진행하고 안내만 추가
+        if failed_orders:
+            message += f"\n참고: 다음 주문은 인식하지 못했습니다: {', '.join(failed_orders)}"
 
-        successful_orders.append({
-            "menu_item": menu["menu_item"],
-            "price": menu["price"],
-            "quantity": quantity,
-            "original": order
-        })
+        return message
 
-    # 실패한 주문이 있으면 에러 메시지 반환
-    if failed_orders:
-        error_msg = "다음 주문에 문제가 있습니다:\n" + "\n".join(failed_orders)
-        raise HTTPException(status_code=400, detail=error_msg)
+    except Exception as e:
+        logger.error(f"다중 주문 처리 실패: {e}")
+        raise
 
-    # 모든 주문이 성공한 경우
-    if not successful_orders:
-        raise HTTPException(status_code=400, detail="처리할 수 있는 주문이 없습니다.")
+# 텍스트 파싱 ex) 짜장면 2개 -> (짜장면, 2개)
+def parse_single_order_simplified(order_text: str) -> Tuple[str, int]:
 
-    # 다중 주문 세션 업데이트
-    total_items = sum(order["quantity"] for order in successful_orders)
-
-    success = redis_session_manager.update_session(
-        session_id,
-        "packaging",
-        {
-            "orders": successful_orders,
-            "total_items": total_items,
-            "menu_item": None,  # 명시적 제거
-            "quantity": None  # 명시적 제거
-        }
-    )
-
-    if not success:
-        raise HTTPException(status_code=500, detail="세션 업데이트에 실패했습니다.")
-
-    # 성공 메시지 생성
-    order_summary = []
-    for order in successful_orders:
-        order_summary.append(f"'{order['menu_item']}' {order['quantity']}개")
-
-    return f"다음 주문이 접수되었습니다: {', '.join(order_summary)}"
-
-# 메뉴와 수량을 한번에 파싱하는 함수
-def parse_single_order(order_text: str) -> Tuple[Optional[str], Optional[int], str]:
-    config = load_quantity_config()
-    units = config.get("units", ["개", "그릇", "잔", "인분", "마리", "판"])
-
-    # 동적으로 패턴 생성
-    unit_pattern = '|'.join(re.escape(unit) for unit in units)
-
-    # 1. 수량 파싱 시도
+    # 1. 수량 파싱 (실패시 0)
     quantity = parse_quantity_from_text(order_text)
 
-    if quantity is None:
-        # 수량이 없는 경우 - 메뉴만 있는지 확인
-        menu_text = re.sub(rf'\s*({unit_pattern})', '', order_text).strip()
-        if menu_text:
-            return menu_text, None, "수량 없음"
-        else:
-            return None, None, "아예 인식 안됨"
-
-    # 2. 수량이 있는 경우 메뉴 추출
+    # 2. 메뉴 추출 (수량 제거 후)
     menu_text = extract_menu_from_text(order_text, quantity)
 
+    # 메뉴가 없으면 예외 발생
     if not menu_text:
-        # 수량만 있고 메뉴가 없는 경우
-        return None, quantity, "메뉴 없음"
+        raise OrderParsingException(f"메뉴명을 인식할 수 없습니다: '{order_text}'. 다시 말씀해주세요.")
 
-    return menu_text, quantity, "success"
+    return menu_text, quantity
 
-# 수량을 알고 있을 때 메뉴 추출
+# 텍스트에서 메뉴 추출
 def extract_menu_from_text(order_text: str, quantity: int) -> str:
     config = load_quantity_config()
 
@@ -294,67 +328,93 @@ def extract_menu_from_text(order_text: str, quantity: int) -> str:
 
     return text
 
-# 포장 방식 벡터 검색
-def search_packaging(packaging_text: str) -> str | None:
+# 전체 주문 검증
+def validate_single_order_simplified(order: str) -> Dict[str, Any]:
+    if not order or not isinstance(order, str):
+        raise OrderParsingException("주문 텍스트가 올바르지 않습니다")
+
+    # 메뉴와 수량 파싱
+    menu_text, quantity = parse_single_order_simplified(order)
+
+    # 메뉴 검색
+    menu = search_menu(menu_text)
+
+    # 수량이 0이어도 허용, 음수는 0으로 보정
+    if quantity < 0:
+        quantity = 0
+
+    return {
+        "menu_item": menu["menu_item"],
+        "price": menu["price"],
+        "quantity": quantity,
+        "original": order
+    }
+
+def search_packaging(packaging_text: str) -> str:
     try:
         query_vector = model.encode([packaging_text])[0]
 
         results = client.query_points(
-            collection_name="packaging_options",  # 포장 옵션 컬렉션
+            collection_name="packaging_options",
             query=query_vector.tolist(),
             limit=3,
             score_threshold=0.2
         )
 
-        if results.points:
-            enhanced_results = []
-            for result in results.points:
-                packaging_name = result.payload['packaging_item']
-                packaging_type = result.payload['type']
-                vector_score = result.score
+        if not results.points:
+            raise PackagingNotFoundException(packaging_text)
 
-                # 여러 fuzzy 점수 계산
-                ratio_score = fuzz.ratio(packaging_text, packaging_name) / 100
-                partial_score = fuzz.partial_ratio(packaging_text, packaging_name) / 100
-                token_score = fuzz.token_sort_ratio(packaging_text, packaging_name) / 100
+        enhanced_results = []
+        for result in results.points:
+            packaging_name = result.payload['packaging_item']
+            packaging_type = result.payload['type']
+            vector_score = result.score
 
-                # 최고 fuzzy 점수 선택
-                best_fuzzy = max(ratio_score, partial_score, token_score)
+            # 여러 fuzzy 점수 계산
+            ratio_score = fuzz.ratio(packaging_text, packaging_name) / 100
+            partial_score = fuzz.partial_ratio(packaging_text, packaging_name) / 100
+            token_score = fuzz.token_sort_ratio(packaging_text, packaging_name) / 100
 
-                # 결합 점수
-                final_score = 0.7 * vector_score + 0.3 * best_fuzzy
+            # 최고 fuzzy 점수 선택
+            best_fuzzy = max(ratio_score, partial_score, token_score)
 
-                enhanced_results.append((packaging_type, final_score, vector_score, best_fuzzy))
+            # 결합 점수
+            final_score = 0.7 * vector_score + 0.3 * best_fuzzy
 
-            enhanced_results.sort(key=lambda x: x[1], reverse=True)
+            enhanced_results.append((packaging_type, final_score, vector_score, best_fuzzy))
 
-            print(f"'{packaging_text}' 포장 검색:")
-            for packaging, final, vector, fuzzy in enhanced_results:
-                print(f"  - {packaging}: 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
+        enhanced_results.sort(key=lambda x: x[1], reverse=True)
 
-            if enhanced_results[0][1] >= 0.45:  # 낮은 임계값
-                return enhanced_results[0][0]  # 실제 포장 타입 반환 ("포장" 또는 "매장식사")
+        logger.info(f"'{packaging_text}' 포장 검색:")
+        for packaging, final, vector, fuzzy in enhanced_results:
+            logger.info(f"  - {packaging}: 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
 
+        if enhanced_results[0][1] >= 0.45:
+            return enhanced_results[0][0]  # 실제 포장 타입 반환
+        else:
+            raise PackagingNotFoundException(packaging_text)
+
+    except PackagingNotFoundException:
+        raise  # 커스텀 예외는 그대로 전파
+    except ConnectionError as e:
+        logger.error(f"벡터 DB 연결 실패: {e}")
+        raise PackagingNotFoundException(f"{packaging_text} (검색 서비스 오류)")
     except Exception as e:
-        print(f"포장 검색 중 오류: {e}")
+        logger.error(f"포장 검색 중 예상치 못한 오류: {e}")
+        raise PackagingNotFoundException(f"{packaging_text} (검색 오류)")
 
-    return None
-
-# 포장 방식 선택 처리
 def process_packaging(session_id: str, packaging_type: str) -> str:
     session = redis_session_manager.get_session(session_id)
     if not session:
-        raise HTTPException(status_code=404, detail="유효하지 않은 세션입니다.")
+        raise SessionNotFoundException(session_id)
 
     if session["step"] != "packaging":
-        raise HTTPException(status_code=400, detail="현재 포장 선택 단계가 아닙니다.")
+        raise InvalidSessionStepException(session["step"], "packaging")
 
-    # 벡터 검색으로 포장 방식 인식
+    # 벡터 검색으로 포장 방식 인식 (이미 예외 발생하도록 수정됨)
     packaging = search_packaging(packaging_type)
-    if not packaging:
-        raise HTTPException(status_code=404, detail="포장 방식을 인식할 수 없습니다. (예: 포장, 매장식사)")
 
-    # Redis 세션 업데이트 (완료 단계로)
+    # Redis 세션 업데이트
     success = redis_session_manager.update_session(
         session_id,
         "packaging",
@@ -362,6 +422,6 @@ def process_packaging(session_id: str, packaging_type: str) -> str:
     )
 
     if not success:
-        raise HTTPException(status_code=500, detail="세션 업데이트에 실패했습니다.")
+        raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
 
     return f"{packaging}"

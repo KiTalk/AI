@@ -6,6 +6,12 @@ from models.logic_response_models import StandardResponse, ErrorResponse, Sessio
 from services.redis_session_service import session_manager
 import logging
 
+from core.exceptions.session_exceptions import (
+    SessionNotFoundException,
+    InvalidSessionStepException,
+    SessionUpdateFailedException
+)
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
@@ -39,6 +45,25 @@ async def place_order(session_id: str, order: MenuRequest):  # MenuRequest 재�
             packaging=None,
             session_id=session_id,
             next_step="포장/매장식사 선택"
+        )
+    
+    except SessionNotFoundException as e:
+        return ErrorResponse(
+            message=e.detail,
+            session_id=session_id,
+            next_step="새로운 세션으로 시작해주세요"
+        )
+    except InvalidSessionStepException as e:
+        return ErrorResponse(
+            message=e.detail,
+            session_id=session_id,
+            next_step="올바른 단계에서 주문해주세요"
+        )
+    except SessionUpdateFailedException as e:
+        return ErrorResponse(
+            message=e.detail,
+            session_id=session_id,
+            next_step="다시 시도해주세요"
         )
     except HTTPException as e:
         return ErrorResponse(
