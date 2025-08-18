@@ -351,57 +351,12 @@ def validate_single_order_simplified(order: str) -> Dict[str, Any]:
     }
 
 def search_packaging(packaging_text: str) -> str:
-    try:
-        query_vector = model.encode([packaging_text])[0]
-
-        results = client.query_points(
-            collection_name="packaging_options",
-            query=query_vector.tolist(),
-            limit=3,
-            score_threshold=0.2
-        )
-
-        if not results.points:
-            raise PackagingNotFoundException(packaging_text)
-
-        enhanced_results = []
-        for result in results.points:
-            packaging_name = result.payload['packaging_item']
-            packaging_type = result.payload['type']
-            vector_score = result.score
-
-            # 여러 fuzzy 점수 계산
-            ratio_score = fuzz.ratio(packaging_text, packaging_name) / 100
-            partial_score = fuzz.partial_ratio(packaging_text, packaging_name) / 100
-            token_score = fuzz.token_sort_ratio(packaging_text, packaging_name) / 100
-
-            # 최고 fuzzy 점수 선택
-            best_fuzzy = max(ratio_score, partial_score, token_score)
-
-            # 결합 점수
-            final_score = 0.7 * vector_score + 0.3 * best_fuzzy
-
-            enhanced_results.append((packaging_type, final_score, vector_score, best_fuzzy))
-
-        enhanced_results.sort(key=lambda x: x[1], reverse=True)
-
-        logger.info(f"'{packaging_text}' 포장 검색:")
-        for packaging, final, vector, fuzzy in enhanced_results:
-            logger.info(f"  - {packaging}: 최종={final:.3f} (벡터={vector:.3f}, Fuzzy={fuzzy:.3f})")
-
-        if enhanced_results[0][1] >= 0.45:
-            return enhanced_results[0][0]  # 실제 포장 타입 반환
-        else:
-            raise PackagingNotFoundException(packaging_text)
-
-    except PackagingNotFoundException:
-        raise  # 커스텀 예외는 그대로 전파
-    except ConnectionError as e:
-        logger.error(f"벡터 DB 연결 실패: {e}")
-        raise PackagingNotFoundException(f"{packaging_text} (검색 서비스 오류)")
-    except Exception as e:
-        logger.error(f"포장 검색 중 예상치 못한 오류: {e}")
-        raise PackagingNotFoundException(f"{packaging_text} (검색 오류)")
+    if packaging_text in ["포장하기", "takeout"]:
+        return "포장하기"
+    elif packaging_text in ["먹고가기", "dine_in"]:
+        return "먹고가기"
+    else:
+        raise PackagingNotFoundException(packaging_text)
 
 def process_packaging(session_id: str, packaging_type: str) -> str:
     session = redis_session_manager.get_session(session_id)
