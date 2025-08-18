@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from services.logic_service import process_menu, process_quantity, process_packaging
+from services.logic_service import process_order, process_packaging
 from models.logic_model import MenuRequest, QuantityRequest, PackagingRequest
 from services.redis_session_service import session_manager
 
@@ -15,48 +15,28 @@ async def start_order():
     return {
         "message": "주문을 시작합니다. 원하시는 메뉴를 말씀해주세요.",
         "session_id": session_id,
-        "current_step": "menu",
-        "next_step": "메뉴 선택"
+        "current_step": "menu_and_quantity",
+        "next_step": "메뉴와 수량 입력"
     }
 
-@router.post("/menu/{session_id}")
-async def choose_menu(session_id: str, menu: MenuRequest):
+@router.post("/order/{session_id}")
+async def place_order(session_id: str, order: MenuRequest):  # MenuRequest 재사용
     try:
-        msg = process_menu(session_id, menu.menu_item)
+        msg = process_order(session_id, order.menu_item)  # "라면 2그릇" 전체 처리
         return {
-            "menu": msg,
+            "message": msg,
             "session_id": session_id,
-            "current_step": "quantity", # 다음에 해야할 단계
-            "next_step": "수량 선택"
-        }
-    except HTTPException as e:
-        return {
-            "message": e.detail,
-            "session_id": session_id,
-            "current_step": "menu",
-            "next_step": "메뉴를 다시 선택",
-            "retry": True
-        }
-
-@router.post("/quantity/{session_id}")
-async def choose_quantity(session_id, q: QuantityRequest):
-    try:
-        msg = process_quantity(session_id, q.quantity)
-        return {
-            "quantity": msg,
-            "session_id": session_id,
-            "current_step": "packaging",
+            "current_step": "packaging",  # 바로 포장 단계로
             "next_step": "포장/매장식사 선택"
         }
     except HTTPException as e:
         return {
             "message": e.detail,
             "session_id": session_id,
-            "current_step": "quantity",
-            "next_step": "수량 다시 선택", #같은 단계
-            "retry": True  # 재시도
+            "current_step": "started",
+            "next_step": "메뉴와 수량을 다시 말씀해주세요",
+            "retry": True
         }
-
 
 @router.post("/packaging/{session_id}")
 async def choose_packaging(session_id: str, p: PackagingRequest):
@@ -65,7 +45,7 @@ async def choose_packaging(session_id: str, p: PackagingRequest):
         return {
             "packaging": msg,
             "session_id": session_id,
-            "current_step": "completed",  # 주문 완료
+            "current_step": "completed",
             "next_step": "주문 완료"
         }
     except HTTPException as e:
