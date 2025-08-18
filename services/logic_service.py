@@ -366,7 +366,6 @@ def process_packaging(session_id: str, packaging_type: str) -> str:
     if session["step"] != "packaging":
         raise InvalidSessionStepException(session["step"], "packaging")
 
-    # 벡터 검색으로 포장 방식 인식 (이미 예외 발생하도록 수정됨)
     packaging = search_packaging(packaging_type)
 
     # Redis 세션 업데이트
