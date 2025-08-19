@@ -29,7 +29,7 @@ router = APIRouter(prefix="/orders", tags=["Order Management"])
 
 
 # 1. 부분 주문 업데이트 (PUT 메서드)
-@router.put("/{session_id}/patch-update", response_model=OrderManagementResponse)
+@router.put("/{session_id}/patch-update", response_model=OrderManagementResponse, summary="부분 주문 업데이트")
 async def update_all_orders_endpoint(session_id: str, request: UpdateAllOrdersRequest) -> OrderManagementResponse:
     try:
         # Pydantic 모델을 딕셔너리 리스트로 변환
@@ -61,7 +61,7 @@ async def update_all_orders_endpoint(session_id: str, request: UpdateAllOrdersRe
 
 
 # 2. 추가 주문 (POST 메서드)
-@router.post("/{session_id}/add", response_model=OrderManagementResponse)
+@router.post("/{session_id}/add", response_model=OrderManagementResponse, summary="추가 주문")
 async def add_order(session_id: str, request: AddOrderRequest) -> OrderManagementResponse:
     try:
         result = add_additional_order(
@@ -90,7 +90,7 @@ async def add_order(session_id: str, request: AddOrderRequest) -> OrderManagemen
 
 
 # 3. 주문 삭제 (DELETE 메서드)
-@router.delete("/{session_id}/remove", response_model=OrderManagementResponse)
+@router.delete("/{session_id}/remove", response_model=OrderManagementResponse, summary="주문 삭제")
 async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderManagementResponse:
     try:
         result = remove_order_item(
