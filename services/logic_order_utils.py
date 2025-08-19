@@ -46,7 +46,7 @@ def update_session_orders(session_id: str, orders: List[Dict[str, Any]], step: s
 
 # 메뉴 검증 및 주문 항목 생성
 def validate_and_create_order_item(menu_item: str, quantity: int, search_menu_func) -> Dict[str, Any]:
-    if quantity <= 0:
+    if quantity < 0:
         raise OrderParsingException(f"'{menu_item}' 수량은 1개 이상이어야 합니다.")
 
     try:
@@ -99,3 +99,57 @@ def create_order_response(message: str, orders: List[Dict[str, Any]]) -> Dict[st
         "total_items": total_items,
         "total_price": total_price
     }
+
+# 기존 주문과 새 주문을 비교하여 변경사항 반환
+def compare_orders(existing_orders: List[Dict], new_orders: List[Dict]) -> Dict:
+    existing_dict = {order["menu_item"]: order["quantity"] for order in existing_orders}
+    new_dict = {order["menu_item"]: order["quantity"] for order in new_orders}
+
+    added = []
+    modified = []
+    removed = []
+
+    # 추가되거나 수정된 항목 찾기
+    for menu_item, quantity in new_dict.items():
+        if menu_item not in existing_dict:
+            added.append({"menu_item": menu_item, "quantity": quantity})
+        elif existing_dict[menu_item] != quantity:
+            modified.append({
+                "menu_item": menu_item,
+                "old_quantity": existing_dict[menu_item],
+                "new_quantity": quantity
+            })
+
+    # 삭제된 항목 찾기
+    for menu_item in existing_dict:
+        if menu_item not in new_dict:
+            removed.append({"menu_item": menu_item, "quantity": existing_dict[menu_item]})
+
+    return {
+        "has_changes": bool(added or modified or removed),
+        "added": added,
+        "modified": modified,
+        "removed": removed
+    }
+
+# 변경사항을 기반으로 메시지 생성
+def generate_update_message(changes: Dict) -> str:
+    if not changes["has_changes"]:
+        return "주문에 변경사항이 없습니다."
+
+    messages = []
+
+    if changes["added"]:
+        added_items = [f"{item['menu_item']} {item['quantity']}개" for item in changes["added"]]
+        messages.append(f"추가: {', '.join(added_items)}")
+
+    if changes["modified"]:
+        modified_items = [f"{item['menu_item']} {item['old_quantity']}개 → {item['new_quantity']}개"
+                          for item in changes["modified"]]
+        messages.append(f"수량변경: {', '.join(modified_items)}")
+
+    if changes["removed"]:
+        removed_items = [f"{item['menu_item']} {item['quantity']}개" for item in changes["removed"]]
+        messages.append(f"삭제: {', '.join(removed_items)}")
+
+    return "주문이 업데이트되었습니다. " + " | ".join(messages)
