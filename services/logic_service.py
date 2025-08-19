@@ -200,7 +200,7 @@ def split_multiple_orders(order_text: str) -> List[str]:
     return [order_text.strip()]
 
 # 다중 주문 처리
-def process_multiple_orders(session_id: str, orders: List[str]) -> str:
+def process_multiple_orders(session_id: str, orders: List[str]) -> None:
     _ = validate_session(session_id)
 
     successful_orders = []

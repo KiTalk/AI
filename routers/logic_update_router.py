@@ -33,7 +33,7 @@ router = APIRouter(prefix="/orders", tags=["Order Management"])
 async def update_all_orders_endpoint(session_id: str, request: UpdateAllOrdersRequest) -> OrderManagementResponse:
     try:
         # Pydantic 모델을 딕셔너리 리스트로 변환
-        order_items = [order.dict() for order in request.orders]
+        order_items = [order.model_dump() for order in request.orders]
 
         result = patch_orders(
             session_id=session_id,
