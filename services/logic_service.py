@@ -17,6 +17,14 @@ from core.exceptions.session_exceptions import (
     InvalidSessionStepException,
     SessionUpdateFailedException
 )
+from .logic_order_utils import (
+    validate_session,
+    validate_and_create_order_item,
+    validate_order_list,
+    update_session_orders,
+    format_order_list,
+    create_order_response,
+)
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -140,34 +148,22 @@ def parse_quantity_from_text(text: str) -> int:
 # 메뉴와 수량을 함께 처리하는 함수
 def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
     try:
-        session = redis_session_manager.get_session(session_id)
-        if not session:
-            raise SessionNotFoundException(session_id)
-
-        # started 단계에서만 실행 가능
-        if session["step"] != "started":
-            raise InvalidSessionStepException(session["step"], "started")
+        _ = validate_session(session_id, "started")
 
         # 주문 분리
         individual_orders = split_multiple_orders(order_text)
         print(f"주문 분리: {individual_orders}")
 
-        message = process_multiple_orders(session_id, individual_orders)
+        processed_orders = process_multiple_orders(session_id, individual_orders)
 
-        updated_session = redis_session_manager.get_session(session_id)
-        if not updated_session:
-            raise SessionUpdateFailedException(session_id, "세션 조회")
-
+        updated_session = validate_session(session_id)
         orders = updated_session["data"]["orders"]
-        total_items = updated_session["data"]["total_items"]
-        total_price = sum(order["price"] * order["quantity"] for order in orders)
 
-        return {
-            "message": message,
-            "orders": orders,
-            "total_items": total_items,
-            "total_price": total_price
-        }
+        message = f"다음 주문이 접수되었습니다: {format_order_list(orders)}"
+        if hasattr(processed_orders, 'failed_orders') and processed_orders.failed_orders:
+            message += f"\n참고: 다음 주문은 인식하지 못했습니다: {', '.join(processed_orders.failed_orders)}"
+
+        return create_order_response(message, orders)
 
     except (MenuNotFoundException, OrderParsingException,
             SessionUpdateFailedException, InvalidSessionStepException, SessionNotFoundException):
@@ -232,10 +228,7 @@ def split_multiple_orders(order_text: str) -> List[str]:
 
 # 다중 주문 처리
 def process_multiple_orders(session_id: str, orders: List[str]) -> str:
-    # 원본 세션 백업
-    original_session = redis_session_manager.get_session(session_id)
-    if not original_session:
-        raise SessionNotFoundException(session_id)
+    _ = validate_session(session_id)
 
     successful_orders = []
     failed_orders = []
@@ -243,7 +236,8 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> str:
     try:
         for order in orders:
             try:
-                validated_order = validate_single_order_simplified(order)
+                menu_text, quantity = parse_single_order_simplified(order)
+                validated_order = validate_and_create_order_item(menu_text, quantity, search_menu)
                 successful_orders.append(validated_order)
             except MenuNotFoundException:
                 failed_orders.append(f"'{order}': 메뉴를 찾을 수 없습니다")
@@ -252,42 +246,12 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> str:
                 logger.warning(f"주문 '{order}' 처리 중 오류: {e}")
                 failed_orders.append(f"'{order}': 처리할 수 없습니다")
 
-        # 하나라도 성공하면 진행 (기존에는 모든 주문이 성공해야 했음)
-        if not successful_orders:
-            raise OrderParsingException("인식할 수 있는 메뉴가 없습니다")
+        validate_order_list(successful_orders)
 
-        # 세션 업데이트
-        total_items = sum(order["quantity"] for order in successful_orders)
-
-        success = redis_session_manager.update_session(
-            session_id,
-            "packaging",
-            {
-                "orders": successful_orders,
-                "total_items": total_items,
-                "menu_item": None,  # 명시적 제거
-                "quantity": None  # 명시적 제거
-            }
-        )
+        success = update_session_orders(session_id, successful_orders, "packaging")
 
         if not success:
             raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
-
-        # 메시지 생성 (수량 0 처리 포함)
-        order_summary = []
-        for order in successful_orders:
-            if order["quantity"] == 0:
-                order_summary.append(f"'{order['menu_item']}' (수량 미지정)")
-            else:
-                order_summary.append(f"'{order['menu_item']}' {order['quantity']}개")
-
-        message = f"다음 주문이 접수되었습니다: {', '.join(order_summary)}"
-
-        # 실패한 주문이 있어도 성공한 것들은 진행하고 안내만 추가
-        if failed_orders:
-            message += f"\n참고: 다음 주문은 인식하지 못했습니다: {', '.join(failed_orders)}"
-
-        return message
 
     except Exception as e:
         logger.error(f"다중 주문 처리 실패: {e}")
@@ -359,12 +323,7 @@ def search_packaging(packaging_text: str) -> str:
         raise PackagingNotFoundException(packaging_text)
 
 def process_packaging(session_id: str, packaging_type: str) -> str:
-    session = redis_session_manager.get_session(session_id)
-    if not session:
-        raise SessionNotFoundException(session_id)
-
-    if session["step"] != "packaging":
-        raise InvalidSessionStepException(session["step"], "packaging")
+    _ = validate_session(session_id, "packaging")
 
     packaging = search_packaging(packaging_type)
 
