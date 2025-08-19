@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from services.logic_service import process_order, process_packaging
 from models.logic_model import MenuRequest, PackagingRequest
-from models.logic_response_models import StandardResponse, ErrorResponse, SessionResponse
+from models.logic_response import StandardResponse, ErrorResponse, SessionResponse
 
 from services.redis_session_service import session_manager
 import logging
