@@ -4,13 +4,18 @@ from config.naver_stt_settings import settings, logger
 from routers import stt, health
 from routers.order_at_once import router as order_router
 from routers.logic_router import router as logic_router
+from config.swagger_config import setup_swagger
 
 # FastAPI 앱 생성
 app = FastAPI(
     title="네이버 클로바 STT API",
     description="실시간 음성 인식 서비스 백엔드",
-    version="1.0.0"
+    version="1.0.0",
+    docs_url="/swagger-ui",
+    redoc_url="/redoc"
 )
+
+setup_swagger(app)
 
 # CORS 설정 (프론트엔드와 통신을 위해)
 app.add_middleware(
