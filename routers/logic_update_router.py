@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, status
 import logging
-from models.logic_update_response import (
+from models.logic_update_response_models import (
     UpdateAllOrdersRequest,
     AddOrderRequest,
     RemoveOrderRequest,
