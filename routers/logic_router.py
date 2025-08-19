@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from services.logic_service import process_order, process_packaging
+from services.logic_service import process_order, process_packaging, analyze_confirmation
 from models.logic_request_models import MenuRequest, PackagingRequest
 from models.logic_response_models import StandardResponse, ErrorResponse, SessionResponse
 
@@ -122,3 +122,21 @@ async def get_full_session(session_id: str):
         packaging=packaging,
         session_id=session_id
     )
+
+# 확인 응답 처리
+@router.post("/confirm", summary="확인 응답 처리")
+async def process_confirmation(request: MenuRequest):
+    try:
+        is_confirmed = analyze_confirmation(request.menu_item)
+
+        return {
+            "message": "응답이 처리되었습니다.",
+            "confirmed": is_confirmed
+        }
+
+    except Exception as e:
+        logger.error(f"확인 응답 처리 중 오류: {e}")
+        return {
+            "message": "응답 처리 중 오류가 발생했습니다.",
+            "confirmed": False
+        }
