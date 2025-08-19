@@ -10,9 +10,9 @@ model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 # 메뉴 데이터 (더 많은 메뉴 추가)
 menu_items = [
-    {"name": "떡볶이", "price": 4000},
-    {"name": "김밥", "price": 3000},
-    {"name": "라면", "price": 3500}
+    {"name": "핫 아메리카노", "price": 3500},
+    {"name": "아이스아메리카노", "price": 4000},
+    {"name": "아이스티", "price": 5000}
 ]
 
 # 메뉴 텍스트를 벡터로 변환
