@@ -1,11 +1,10 @@
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from fuzzywuzzy import fuzz
-import json
-import os
 import re
 import logging
-from typing import Tuple, List, Optional, Dict, Any
+from core.utils.config_loader import load_config
+from typing import Tuple, List, Dict, Any
 from .redis_session_service import redis_session_manager
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
@@ -35,35 +34,9 @@ client = QdrantClient(url="http://localhost:6333")
 # SentenceTransformer 모델 초기화
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
-# 설정 캐시
-_config_cache = None
-
-# config 로딩
+# quantity_patterns 설정을 로드
 def load_quantity_config():
-    global _config_cache
-
-    if _config_cache is not None:
-        return _config_cache
-
-    try:
-        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
-        config_file = os.path.join(config_dir, 'quantity_patterns.json')
-
-        with open(config_file, 'r', encoding='utf-8') as f:
-            _config_cache = json.load(f)
-            return _config_cache
-
-    except FileNotFoundError:
-        logger.error(f"설정 파일을 찾을 수 없습니다: {config_file}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
-
-    except json.JSONDecodeError as e:
-        logger.error(f"설정 파일 JSON 파싱 오류: {e}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
-
-    except Exception as e:
-        logger.error(f"설정 파일 로드 실패: {e}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
+    return load_config('quantity_patterns')
 
 # 메뉴 찾기
 def search_menu(menu_item: str) -> Dict[str, Any]:
