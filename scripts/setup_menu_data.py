@@ -10,7 +10,9 @@ model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 # 메뉴 데이터 (더 많은 메뉴 추가)
 menu_items = [
-   "떡볶이", "김밥", "라면"
+    {"name": "핫 아메리카노", "price": 3500},
+    {"name": "아이스아메리카노", "price": 4000},
+    {"name": "아이스티", "price": 5000}
 ]
 
 # 메뉴 텍스트를 벡터로 변환
@@ -47,7 +49,7 @@ for i, menu_item in enumerate(menu_items):
    point = PointStruct(
        id=i,
        vector=vectors[i].tolist(),
-       payload={"menu_item": menu_item}
+       payload={"menu_item": menu_item["name"], "price": menu_item["price"]}
    )
    points.append(point)
 
