@@ -311,3 +311,23 @@ def process_packaging(session_id: str, packaging_type: str) -> str:
         raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
 
     return f"{packaging}"
+
+# 확인 응답 분석 (긍정/부정 판단)
+def analyze_confirmation(text: str) -> bool:
+    text = text.strip().lower()
+
+    positive_words = ["응", "네", "예", "맞아", "좋아", "그래", "ok", "오케이", "yes", "ㅇㅇ", "맞습니다"]
+    negative_words = ["아니", "아니야", "싫어", "안돼", "노", "no", "아니오", "ㄴㄴ", "취소"]
+
+    # 부정 먼저 체크 (더 명확한 거부 의사)
+    for word in negative_words:
+        if word in text:
+            return False
+
+    # 긍정 체크
+    for word in positive_words:
+        if word in text:
+            return True
+
+    # 기본값은 True (긍정으로 처리)
+    return True
