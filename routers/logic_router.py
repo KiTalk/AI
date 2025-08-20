@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from services.logic_service import process_order, process_packaging
-from models.logic_model import MenuRequest, PackagingRequest
+from services.logic_service import process_order, process_packaging, analyze_confirmation
+from models.logic_request_models import MenuRequest, PackagingRequest
 from models.logic_response_models import StandardResponse, ErrorResponse, SessionResponse
 
 from services.redis_session_service import session_manager
@@ -20,7 +20,7 @@ router = APIRouter(
 )
 
 # 세션 생성
-@router.post("/start")
+@router.post("/start", summary="세션 생성")
 async def start_order():
     session_id = session_manager.create_session()
     return StandardResponse(
@@ -29,7 +29,7 @@ async def start_order():
         next_step="메뉴와 수량 입력"
     )
 
-@router.post("/order/{session_id}")
+@router.post("/order/{session_id}", summary="메뉴/수량 처리")
 async def place_order(session_id: str, order: MenuRequest):  # MenuRequest 재사용
     try:
         msg = process_order(session_id, order.menu_item)
@@ -72,7 +72,7 @@ async def place_order(session_id: str, order: MenuRequest):  # MenuRequest 재�
             next_step="메뉴와 수량을 다시 말씀해주세요"
         )
 
-@router.post("/packaging/{session_id}")
+@router.post("/packaging/{session_id}", summary="매장/포장 처리")
 async def choose_packaging(session_id: str, p: PackagingRequest):
     try:
         msg = process_packaging(session_id, p.packaging_type)
@@ -101,7 +101,7 @@ async def choose_packaging(session_id: str, p: PackagingRequest):
         )
 
 # 전체 세션 정보 조회
-@router.get("/session/{session_id}")
+@router.get("/session/{session_id}", summary="Redis에 저장된 세션 조회")
 async def get_full_session(session_id: str):
     session = session_manager.get_session(session_id)
     if not session:
@@ -122,3 +122,21 @@ async def get_full_session(session_id: str):
         packaging=packaging,
         session_id=session_id
     )
+
+# 확인 응답 처리
+@router.post("/confirm", summary="확인 응답 처리")
+async def process_confirmation(request: MenuRequest):
+    try:
+        is_confirmed = analyze_confirmation(request.menu_item)
+
+        return {
+            "message": "응답이 처리되었습니다.",
+            "confirmed": is_confirmed
+        }
+
+    except Exception as e:
+        logger.error(f"확인 응답 처리 중 오류: {e}")
+        return {
+            "message": "응답 처리 중 오류가 발생했습니다.",
+            "confirmed": False
+        }
