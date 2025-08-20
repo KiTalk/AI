@@ -4,6 +4,7 @@ from config.naver_stt_settings import settings, logger
 from routers import stt, health
 from routers.order_at_once import router as order_router
 from routers.logic_router import router as logic_router
+from routers.logic_update_router import router as logic_update_router
 from config.swagger_config import setup_swagger
 
 # FastAPI 앱 생성
@@ -31,6 +32,7 @@ app.include_router(stt.router)
 app.include_router(health.router)
 app.include_router(order_router)
 app.include_router(logic_router)
+app.include_router(logic_update_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 
