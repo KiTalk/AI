@@ -1,4 +1,3 @@
-# models/response_models.py
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -7,6 +6,8 @@ class OrderItem(BaseModel):
     price: int
     quantity: int
     original: str
+    popular: bool = False
+    temp: str = "hot"
 
 class StandardResponse(BaseModel):
     message: str
