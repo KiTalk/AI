@@ -5,6 +5,20 @@ from routers import stt, health
 from routers.logic_router import router as logic_router
 from routers.logic_update_router import router as logic_update_router
 from config.swagger_config import setup_swagger
+from sentence_transformers import SentenceTransformer
+from services.similarity_utils import set_model_getter
+from config.config_cache import warmup_config_cache
+from contextlib import asynccontextmanager
+
+model = SentenceTransformer('jhgan/ko-sroberta-multitask')
+set_model_getter(lambda: model)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # 시작 시
+    warmup_config_cache()
+    logger.info("설정 캐시 예열 완료")
+    yield
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -12,7 +26,8 @@ app = FastAPI(
     description="실시간 음성 인식 서비스 백엔드",
     version="1.0.0",
     docs_url="/swagger-ui",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 setup_swagger(app)
