@@ -156,15 +156,49 @@ def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
 def split_multiple_orders(order_text: str) -> List[str]:
     config = load_quantity_config()
 
+    # 0단계: 온도 키워드 보호
+    temp_config = load_config('temperature_patterns')
+    temp_keywords = temp_config.get("cold_expressions", []) + temp_config.get("hot_expressions", [])
+
+    # 온도 키워드를 벡터 유사도로 보호
+    protected_text = order_text
+    words = order_text.split()
+    replacements = {}
+
+    for i, word in enumerate(words):
+        best_match = None
+        highest_score = 0.0
+
+        for keyword in temp_keywords:
+            final_score, _, _ = calculate_similarity_score(word.lower(), keyword)
+            if final_score > highest_score and final_score > 0.6:  # 임계값
+                highest_score = final_score
+                best_match = keyword
+
+        if best_match:
+            placeholder = f"__TEMP_{i}__"
+            protected_text = protected_text.replace(word, placeholder)
+            replacements[placeholder] = word
+            logger.info(f"🔒 온도 키워드 보호: '{word}' (유사: '{best_match}', 점수: {highest_score:.3f}) → '{placeholder}'")
+
+    logger.info(f"🔒 보호된 텍스트: '{order_text}' → '{protected_text}'")
+
     # 1단계: config의 구분자로 분리 시도 (대비로 뒤에 예시 추가함)
     separators = config.get("separators", [",", "그리고", "하고", "랑", "와", "과"])
     pattern = '|'.join(re.escape(sep) for sep in separators)
-    orders = re.split(pattern, order_text)
+    orders = re.split(pattern, protected_text)
     orders = [order.strip() for order in orders if order.strip()]
 
     # 구분자로 분리되었으면 반환
     if len(orders) > 1:
-        return orders
+        # 플레이스홀더를 원래 키워드로 복원
+        restored_orders = []
+        for order in orders:
+            restored_order = order
+            for placeholder, original in replacements.items():
+                restored_order = restored_order.replace(placeholder, original)
+            restored_orders.append(restored_order)
+        return restored_orders
 
     # 2단계: 패턴 기반 자동 분리 (config 기반)
     units = config.get("units", ["개", "그릇", "잔", "인분", "마리", "판", "조각", "줄", "공기", "병"])
@@ -179,10 +213,10 @@ def split_multiple_orders(order_text: str) -> List[str]:
     # 단위가 없어도 동작하도록 수정
     if config.get("unit_required", False):
         # 단위 필수
-        full_pattern = rf'([가-힣\s]+?)\s*{quantity_pattern}\s*({unit_pattern})'
+        full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
     else:
         # 단위 선택적
-        full_pattern = rf'([가-힣\s]+?)\s*{quantity_pattern}\s*({unit_pattern})?'
+        full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
 
     matches = re.findall(full_pattern, order_text)
 
@@ -199,6 +233,14 @@ def split_multiple_orders(order_text: str) -> List[str]:
             elif len(match) == 2:  # (메뉴, 수량)
                 menu, qty = match
                 parsed_orders.append(f"{menu.strip()} {qty}")
+
+        restored_orders = []
+        for order in parsed_orders:
+            restored_order = order
+            for placeholder, original in replacements.items():
+                restored_order = restored_order.replace(placeholder, original)
+            restored_orders.append(restored_order)
+
 
         logger.info(f"패턴 기반 분리: '{order_text}' → {parsed_orders}")
         return parsed_orders
