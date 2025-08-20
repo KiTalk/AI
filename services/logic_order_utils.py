@@ -1,8 +1,7 @@
 import logging
 from typing import Dict, Any, List, Tuple
 from .redis_session_service import redis_session_manager
-from fuzzywuzzy import fuzz
-from sentence_transformers import SentenceTransformer
+from services.similarity_utils import combined_score_from_texts
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
     OrderParsingException
@@ -11,8 +10,6 @@ from core.exceptions.session_exceptions import (
     SessionNotFoundException,
     InvalidSessionStepException,
 )
-
-model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +80,16 @@ def add_new_orders(existing_orders: List[Dict[str, Any]], new_orders: List[Dict[
     return updated_orders
 
 # 특정 메뉴를 주문 목록에서 제거
-def remove_order_by_menu_item(orders: List[Dict[str, Any]], menu_item: str) -> List[Dict[str, Any]]:
+def remove_order_by_menu_item(orders: List[Dict[str, Any]], menu_item: str, temp: str = None) -> List[Dict[str, Any]]:
     original_count = len(orders)
-    filtered_orders = [order for order in orders if order["menu_item"] != menu_item]
+
+    if temp is not None:
+        filtered_orders = [order for order in orders if not (order["menu_item"] == menu_item and order["temp"] == temp)]
+    else:
+        filtered_orders = [order for order in orders if order["menu_item"] != menu_item]
 
     if len(filtered_orders) == original_count:
         raise MenuNotFoundException(menu_item)
-
-    if not filtered_orders:
-        raise OrderParsingException("모든 주문을 삭제할 수 없습니다. 최소 1개 이상의 주문이 필요합니다.")
 
     return filtered_orders
 
@@ -108,28 +106,31 @@ def create_order_response(message: str, orders: List[Dict[str, Any]]) -> Dict[st
 
 # 기존 주문과 새 주문을 비교하여 변경사항 반환
 def compare_orders(existing_orders: List[Dict], new_orders: List[Dict]) -> Dict:
-    existing_dict = {order["menu_item"]: order["quantity"] for order in existing_orders}
-    new_dict = {order["menu_item"]: order["quantity"] for order in new_orders}
+    existing_dict = {(order["menu_item"], order["temp"]): order["quantity"] for order in existing_orders}
+    new_dict = {(order["menu_item"], order["temp"]): order["quantity"] for order in new_orders}
 
     added = []
     modified = []
     removed = []
 
     # 추가되거나 수정된 항목 찾기
-    for menu_item, quantity in new_dict.items():
-        if menu_item not in existing_dict:
-            added.append({"menu_item": menu_item, "quantity": quantity})
-        elif existing_dict[menu_item] != quantity:
+    for (menu_item, temp), quantity in new_dict.items():
+        key = (menu_item, temp)
+        if key not in existing_dict:
+            added.append({"menu_item": menu_item, "temp": temp, "quantity": quantity})
+        elif existing_dict[key] != quantity:
             modified.append({
                 "menu_item": menu_item,
-                "old_quantity": existing_dict[menu_item],
+                "temp": temp,
+                "old_quantity": existing_dict[key],
                 "new_quantity": quantity
             })
 
     # 삭제된 항목 찾기
-    for menu_item in existing_dict:
-        if menu_item not in new_dict:
-            removed.append({"menu_item": menu_item, "quantity": existing_dict[menu_item]})
+    for (menu_item, temp) in existing_dict:
+        key = (menu_item, temp)
+        if key not in new_dict:
+            removed.append({"menu_item": menu_item, "temp": temp, "quantity": existing_dict[key]})
 
     return {
         "has_changes": bool(added or modified or removed),
@@ -161,25 +162,6 @@ def generate_update_message(changes: Dict) -> str:
     return "주문이 업데이트되었습니다. " + " | ".join(messages)
 
 # 벡터 + fuzzy 유사도 점수 계산
-def calculate_similarity_score(input_text: str, target_text: str, threshold: float = 0.45) -> Tuple[
-    float, float, float]:
-
-    # 1. 벡터 유사도 계산
-    input_vector = model.encode([input_text.lower()])[0]
-    target_vector = model.encode([target_text.lower()])[0]
-
-    import numpy as np
-    dot_product = float(np.dot(input_vector, target_vector))
-    norm_product = float(np.linalg.norm(input_vector) * np.linalg.norm(target_vector))
-    vector_score = dot_product / norm_product
-
-    # 2. fuzzy 점수 계산
-    ratio_score = fuzz.ratio(target_text, input_text.lower()) / 100
-    partial_score = fuzz.partial_ratio(target_text, input_text.lower()) / 100
-    token_score = fuzz.token_sort_ratio(target_text, input_text.lower()) / 100
-    best_fuzzy = max(ratio_score, partial_score, token_score)
-
-    # 3. 결합 점수
-    final_score = 0.7 * vector_score + 0.3 * best_fuzzy
-
-    return final_score, vector_score, best_fuzzy
+def calculate_similarity_score(input_text: str, target_text: str, threshold: float = 0.45) -> Tuple[float, float, float]:
+    # threshold는 내부적으로 사용하지 않지만, 기존 호출부와의 호환을 위해 파라미터 유지
+    return combined_score_from_texts(input_text, target_text)

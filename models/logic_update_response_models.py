@@ -5,12 +5,14 @@ from typing import List
 class SimpleOrderItem(BaseModel):
     menu_item: str = Field(..., description="메뉴명")
     quantity: int = Field(..., gt=0, description="수량 (1개 이상)")
+    temp: str = Field(..., description="온도 (ice/hot)")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "menu_item": "라면",
-                "quantity": 3
+                "menu_item": "아메리카노",
+                "quantity": 3,
+                "temp": "ice"
             }
         }
 
@@ -22,9 +24,9 @@ class UpdateAllOrdersRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "orders": [
-                    {"menu_item": "라면", "quantity": 3},
-                    {"menu_item": "떡볶이", "quantity": 2},
-                    {"menu_item": "김밥", "quantity": 1}
+                    {"menu_item": "아메리카노", "quantity": 2, "temp": "ice"},
+                    {"menu_item": "아메리카노", "quantity": 1, "temp": "hot"},
+                    {"menu_item": "말차 프라페", "quantity": 1, "temp": "ice"}
                 ]
             }
         }
@@ -36,18 +38,20 @@ class AddOrderRequest(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "order_text": "짬뽕 2그릇, 탕수육 1개"
+                "order_text": "플레인 스콘 1개"
             }
         }
 
 # 주문 삭제
 class RemoveOrderRequest(BaseModel):
     menu_item: str = Field(..., description="삭제할 메뉴명")
+    temp: str = Field(..., description="ice/hot")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "menu_item": "떡볶이"
+                "menu_item": "아메리카노",
+                "temp": "hot"
             }
         }
 
