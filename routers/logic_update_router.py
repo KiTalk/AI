@@ -9,7 +9,8 @@ from models.logic_update_response_models import (
 from services.logic_update_service import (
     patch_orders,
     add_additional_order,
-    remove_order_item
+    remove_order_item,
+    clear_all_orders
 )
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
@@ -88,7 +89,6 @@ async def add_order(session_id: str, request: AddOrderRequest) -> OrderManagemen
             detail="서버 내부 오류가 발생했습니다"
         )
 
-
 # 3. 주문 삭제 (DELETE 메서드)
 @router.delete("/{session_id}/remove", response_model=OrderManagementResponse, summary="주문 삭제")
 async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderManagementResponse:
@@ -109,6 +109,32 @@ async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderMan
 
     except (SessionNotFoundException, InvalidSessionStepException,
             MenuNotFoundException, OrderParsingException, SessionUpdateFailedException):
+        raise
+
+    except Exception as e:
+        logger.error(f"예상치 못한 오류: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="서버 내부 오류가 발생했습니다"
+        )
+
+
+# 4. 전체 주문 삭제 (DELETE 메서드)
+@router.delete("/{session_id}/clear", response_model=OrderManagementResponse, summary="전체 주문 삭제")
+async def clear_orders(session_id: str) -> OrderManagementResponse:
+    try:
+        result = clear_all_orders(session_id=session_id)
+
+        return OrderManagementResponse(
+            success=True,
+            message=result["message"],
+            orders=result["orders"],
+            total_items=result["total_items"],
+            total_price=result["total_price"]
+        )
+
+    except (SessionNotFoundException, InvalidSessionStepException,
+            SessionUpdateFailedException):
         raise
 
     except Exception as e:
