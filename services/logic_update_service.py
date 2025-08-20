@@ -163,3 +163,31 @@ def remove_order_item(session_id: str, menu_item: str, temp: str) -> Dict[str, A
     except Exception as e:
         logger.error(f"주문 항목 삭제 중 오류: {e}")
         raise OrderParsingException("주문 항목 삭제 중 오류가 발생했습니다")
+
+# 전체 주문 삭제 (주문 초기화)
+def clear_all_orders(session_id: str) -> Dict[str, Any]:
+    try:
+        # 세션 검증
+        session = validate_session(session_id, "packaging")
+
+        # 현재 주문 확인
+        orders = session["data"]["orders"]
+        if not orders:
+            raise OrderParsingException("삭제할 주문이 없습니다.")
+
+        # 빈 주문 목록으로 업데이트
+        empty_orders = []
+        success = update_session_orders(session_id, empty_orders)
+        if not success:
+            raise SessionUpdateFailedException(session_id, "전체 주문 삭제")
+
+        # 응답 생성
+        message = "모든 주문이 삭제되었습니다."
+        return create_order_response(message, empty_orders)
+
+    except (SessionNotFoundException, InvalidSessionStepException,
+            SessionUpdateFailedException, OrderParsingException):
+        raise
+    except Exception as e:
+        logger.error(f"전체 주문 삭제 중 오류: {e}")
+        raise OrderParsingException("전체 주문 삭제 중 오류가 발생했습니다")
