@@ -1,11 +1,9 @@
 from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
-from fuzzywuzzy import fuzz
-import json
-import os
 import re
 import logging
-from typing import Tuple, List, Optional, Dict, Any
+from core.utils.config_loader import load_config
+from typing import Tuple, List, Dict, Any
 from .redis_session_service import redis_session_manager
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
@@ -17,6 +15,15 @@ from core.exceptions.session_exceptions import (
     InvalidSessionStepException,
     SessionUpdateFailedException
 )
+from .logic_order_utils import (
+    validate_session,
+    validate_and_create_order_item,
+    validate_order_list,
+    update_session_orders,
+    format_order_list,
+    create_order_response,
+    calculate_similarity_score
+)
 
 # 로거 설정
 logger = logging.getLogger(__name__)
@@ -27,45 +34,22 @@ client = QdrantClient(url="http://localhost:6333")
 # SentenceTransformer 모델 초기화
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
-# 설정 캐시
-_config_cache = None
-
-# config 로딩
+# quantity_patterns 설정을 로드
 def load_quantity_config():
-    global _config_cache
-
-    if _config_cache is not None:
-        return _config_cache
-
-    try:
-        config_dir = os.path.join(os.path.dirname(__file__), '..', 'config')
-        config_file = os.path.join(config_dir, 'quantity_patterns.json')
-
-        with open(config_file, 'r', encoding='utf-8') as f:
-            _config_cache = json.load(f)
-            return _config_cache
-
-    except FileNotFoundError:
-        logger.error(f"설정 파일을 찾을 수 없습니다: {config_file}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
-
-    except json.JSONDecodeError as e:
-        logger.error(f"설정 파일 JSON 파싱 오류: {e}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
-
-    except Exception as e:
-        logger.error(f"설정 파일 로드 실패: {e}")
-        raise OrderParsingException("시스템 설정 오류가 발생했습니다")
+    return load_config('quantity_patterns')
 
 # 메뉴 찾기
 def search_menu(menu_item: str) -> Dict[str, Any]:
     try:
-        query_vector = model.encode([menu_item])[0]
+        # 온도 감지 및 메뉴명 추출
+        cleaned_menu, temperature = detect_temperature(menu_item)
+
+        query_vector = model.encode([cleaned_menu])[0]
 
         results = client.query_points(
             collection_name="menu",
             query=query_vector.tolist(),
-            limit=3,
+            limit=10,
             score_threshold=0.2
         )
 
@@ -77,33 +61,37 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
         for result in results.points:
             menu_name = result.payload['menu_item']
             price = result.payload['price']
+            popular = result.payload.get('popular', False)
+            db_temp = result.payload.get('temp', 'hot')
             vector_score = result.score
 
-            # 여러 fuzzy 점수 계산
-            ratio_score = fuzz.ratio(menu_item, menu_name) / 100
-            partial_score = fuzz.partial_ratio(menu_item, menu_name) / 100
-            token_score = fuzz.token_sort_ratio(menu_item, menu_name) / 100
+            # 수정: 온도 매칭 확인 로직 추가
+            if db_temp != temperature:
+                continue
 
-            # 최고 fuzzy 점수 선택
-            best_fuzzy = max(ratio_score, partial_score, token_score)
+            final_score, vector_score, best_fuzzy = calculate_similarity_score(cleaned_menu, menu_name)
 
-            # 결합 점수
-            final_score = 0.7 * vector_score + 0.3 * best_fuzzy
+            enhanced_results.append((menu_name, price, popular, db_temp, final_score, vector_score, best_fuzzy))
 
-            enhanced_results.append((menu_name, price, final_score, vector_score, best_fuzzy))
+        # 수정: 온도 필터링 후 결과가 없으면 예외 처리 추가
+        if not enhanced_results:
+            raise MenuNotFoundException(menu_item)
 
-        enhanced_results.sort(key=lambda x: x[2], reverse=True)
+        enhanced_results.sort(key=lambda x: x[4], reverse=True)
 
-        logger.info(f"'{menu_item}' 실용적 검색:")
+        logger.info(f"'{menu_item}' 검색 (온도: {temperature}):")
 
-        for menu, price, final, vector, fuzzy in enhanced_results:
-            logger.info(f"  - {menu}({price}원): 최종={final:.3f}")
+        for menu, price, popular, temp, final, vector, fuzzy in enhanced_results:
+            logger.info(f"  - {menu}[{temp.upper()}]({price}원): 최종={final:.3f}")
 
-        if enhanced_results[0][2] >= 0.45:
+        if enhanced_results[0][4] >= 0.45:
             return {
                 "menu_item": enhanced_results[0][0],
-                "price": enhanced_results[0][1]
+                "price": enhanced_results[0][1],
+                "popular": enhanced_results[0][2],
+                "temp": enhanced_results[0][3]
             }
+
         else:
             raise MenuNotFoundException(menu_item)
 
@@ -140,34 +128,22 @@ def parse_quantity_from_text(text: str) -> int:
 # 메뉴와 수량을 함께 처리하는 함수
 def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
     try:
-        session = redis_session_manager.get_session(session_id)
-        if not session:
-            raise SessionNotFoundException(session_id)
-
-        # started 단계에서만 실행 가능
-        if session["step"] != "started":
-            raise InvalidSessionStepException(session["step"], "started")
+        _ = validate_session(session_id, "started")
 
         # 주문 분리
         individual_orders = split_multiple_orders(order_text)
         print(f"주문 분리: {individual_orders}")
 
-        message = process_multiple_orders(session_id, individual_orders)
+        processed_orders = process_multiple_orders(session_id, individual_orders)
 
-        updated_session = redis_session_manager.get_session(session_id)
-        if not updated_session:
-            raise SessionUpdateFailedException(session_id, "세션 조회")
-
+        updated_session = validate_session(session_id)
         orders = updated_session["data"]["orders"]
-        total_items = updated_session["data"]["total_items"]
-        total_price = sum(order["price"] * order["quantity"] for order in orders)
 
-        return {
-            "message": message,
-            "orders": orders,
-            "total_items": total_items,
-            "total_price": total_price
-        }
+        message = f"다음 주문이 접수되었습니다: {format_order_list(orders)}"
+        if hasattr(processed_orders, 'failed_orders') and processed_orders.failed_orders:
+            message += f"\n참고: 다음 주문은 인식하지 못했습니다: {', '.join(processed_orders.failed_orders)}"
+
+        return create_order_response(message, orders)
 
     except (MenuNotFoundException, OrderParsingException,
             SessionUpdateFailedException, InvalidSessionStepException, SessionNotFoundException):
@@ -180,15 +156,49 @@ def process_order(session_id: str, order_text: str) -> Dict[str, Any]:
 def split_multiple_orders(order_text: str) -> List[str]:
     config = load_quantity_config()
 
+    # 0단계: 온도 키워드 보호
+    temp_config = load_config('temperature_patterns')
+    temp_keywords = temp_config.get("cold_expressions", []) + temp_config.get("hot_expressions", [])
+
+    # 온도 키워드를 벡터 유사도로 보호
+    protected_text = order_text
+    words = order_text.split()
+    replacements = {}
+
+    for i, word in enumerate(words):
+        best_match = None
+        highest_score = 0.0
+
+        for keyword in temp_keywords:
+            final_score, _, _ = calculate_similarity_score(word.lower(), keyword)
+            if final_score > highest_score and final_score > 0.6:  # 임계값
+                highest_score = final_score
+                best_match = keyword
+
+        if best_match:
+            placeholder = f"__TEMP_{i}__"
+            protected_text = protected_text.replace(word, placeholder)
+            replacements[placeholder] = word
+            logger.info(f"🔒 온도 키워드 보호: '{word}' (유사: '{best_match}', 점수: {highest_score:.3f}) → '{placeholder}'")
+
+    logger.info(f"🔒 보호된 텍스트: '{order_text}' → '{protected_text}'")
+
     # 1단계: config의 구분자로 분리 시도 (대비로 뒤에 예시 추가함)
     separators = config.get("separators", [",", "그리고", "하고", "랑", "와", "과"])
     pattern = '|'.join(re.escape(sep) for sep in separators)
-    orders = re.split(pattern, order_text)
+    orders = re.split(pattern, protected_text)
     orders = [order.strip() for order in orders if order.strip()]
 
     # 구분자로 분리되었으면 반환
     if len(orders) > 1:
-        return orders
+        # 플레이스홀더를 원래 키워드로 복원
+        restored_orders = []
+        for order in orders:
+            restored_order = order
+            for placeholder, original in replacements.items():
+                restored_order = restored_order.replace(placeholder, original)
+            restored_orders.append(restored_order)
+        return restored_orders
 
     # 2단계: 패턴 기반 자동 분리 (config 기반)
     units = config.get("units", ["개", "그릇", "잔", "인분", "마리", "판", "조각", "줄", "공기", "병"])
@@ -203,10 +213,10 @@ def split_multiple_orders(order_text: str) -> List[str]:
     # 단위가 없어도 동작하도록 수정
     if config.get("unit_required", False):
         # 단위 필수
-        full_pattern = rf'([가-힣\s]+?)\s*{quantity_pattern}\s*({unit_pattern})'
+        full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
     else:
         # 단위 선택적
-        full_pattern = rf'([가-힣\s]+?)\s*{quantity_pattern}\s*({unit_pattern})?'
+        full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
 
     matches = re.findall(full_pattern, order_text)
 
@@ -224,6 +234,14 @@ def split_multiple_orders(order_text: str) -> List[str]:
                 menu, qty = match
                 parsed_orders.append(f"{menu.strip()} {qty}")
 
+        restored_orders = []
+        for order in parsed_orders:
+            restored_order = order
+            for placeholder, original in replacements.items():
+                restored_order = restored_order.replace(placeholder, original)
+            restored_orders.append(restored_order)
+
+
         logger.info(f"패턴 기반 분리: '{order_text}' → {parsed_orders}")
         return parsed_orders
 
@@ -231,11 +249,8 @@ def split_multiple_orders(order_text: str) -> List[str]:
     return [order_text.strip()]
 
 # 다중 주문 처리
-def process_multiple_orders(session_id: str, orders: List[str]) -> str:
-    # 원본 세션 백업
-    original_session = redis_session_manager.get_session(session_id)
-    if not original_session:
-        raise SessionNotFoundException(session_id)
+def process_multiple_orders(session_id: str, orders: List[str]) -> None:
+    _ = validate_session(session_id)
 
     successful_orders = []
     failed_orders = []
@@ -243,7 +258,8 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> str:
     try:
         for order in orders:
             try:
-                validated_order = validate_single_order_simplified(order)
+                menu_text, quantity = parse_single_order_simplified(order)
+                validated_order = validate_and_create_order_item(menu_text, quantity, search_menu)
                 successful_orders.append(validated_order)
             except MenuNotFoundException:
                 failed_orders.append(f"'{order}': 메뉴를 찾을 수 없습니다")
@@ -252,42 +268,12 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> str:
                 logger.warning(f"주문 '{order}' 처리 중 오류: {e}")
                 failed_orders.append(f"'{order}': 처리할 수 없습니다")
 
-        # 하나라도 성공하면 진행 (기존에는 모든 주문이 성공해야 했음)
-        if not successful_orders:
-            raise OrderParsingException("인식할 수 있는 메뉴가 없습니다")
+        validate_order_list(successful_orders)
 
-        # 세션 업데이트
-        total_items = sum(order["quantity"] for order in successful_orders)
-
-        success = redis_session_manager.update_session(
-            session_id,
-            "packaging",
-            {
-                "orders": successful_orders,
-                "total_items": total_items,
-                "menu_item": None,  # 명시적 제거
-                "quantity": None  # 명시적 제거
-            }
-        )
+        success = update_session_orders(session_id, successful_orders, "packaging")
 
         if not success:
             raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
-
-        # 메시지 생성 (수량 0 처리 포함)
-        order_summary = []
-        for order in successful_orders:
-            if order["quantity"] == 0:
-                order_summary.append(f"'{order['menu_item']}' (수량 미지정)")
-            else:
-                order_summary.append(f"'{order['menu_item']}' {order['quantity']}개")
-
-        message = f"다음 주문이 접수되었습니다: {', '.join(order_summary)}"
-
-        # 실패한 주문이 있어도 성공한 것들은 진행하고 안내만 추가
-        if failed_orders:
-            message += f"\n참고: 다음 주문은 인식하지 못했습니다: {', '.join(failed_orders)}"
-
-        return message
 
     except Exception as e:
         logger.error(f"다중 주문 처리 실패: {e}")
@@ -347,7 +333,9 @@ def validate_single_order_simplified(order: str) -> Dict[str, Any]:
         "menu_item": menu["menu_item"],
         "price": menu["price"],
         "quantity": quantity,
-        "original": order
+        "original": order,
+        "popular": menu["popular"],
+        "temp": menu["temp"]
     }
 
 def search_packaging(packaging_text: str) -> str:
@@ -359,12 +347,7 @@ def search_packaging(packaging_text: str) -> str:
         raise PackagingNotFoundException(packaging_text)
 
 def process_packaging(session_id: str, packaging_type: str) -> str:
-    session = redis_session_manager.get_session(session_id)
-    if not session:
-        raise SessionNotFoundException(session_id)
-
-    if session["step"] != "packaging":
-        raise InvalidSessionStepException(session["step"], "packaging")
+    _ = validate_session(session_id, "packaging")
 
     packaging = search_packaging(packaging_type)
 
@@ -379,3 +362,59 @@ def process_packaging(session_id: str, packaging_type: str) -> str:
         raise SessionUpdateFailedException(session_id, "포장 정보 업데이트")
 
     return f"{packaging}"
+
+# 확인 응답 분석 (긍정/부정 판단)
+def analyze_confirmation(text: str) -> bool:
+    text = text.strip().lower()
+
+    positive_words = ["응", "네", "예", "맞아", "좋아", "그래", "ok", "오케이", "yes", "ㅇㅇ", "맞습니다"]
+    negative_words = ["아니", "아니야", "싫어", "안돼", "노", "no", "아니오", "ㄴㄴ", "취소"]
+
+    # 부정 먼저 체크 (더 명확한 거부 의사)
+    for word in negative_words:
+        if word in text:
+            return False
+
+    # 긍정 체크
+    for word in positive_words:
+        if word in text:
+            return True
+
+    # 기본값은 True (긍정으로 처리)
+    return True
+
+# 벡터 + fuzzy 조합 온도 감지 (search_menu와 동일한 방식)
+def detect_temperature(text: str) -> Tuple[str, str]:
+    # config 로드
+    temp_config = load_config('temperature_patterns')
+    cold_expressions = temp_config.get("cold_expressions", [])
+    hot_expressions = temp_config.get("hot_expressions", [])
+    threshold = temp_config.get("threshold", 0.45)
+    default_temp = temp_config.get("default_temperature", "hot")
+
+    # 1단계: 단어 분리
+    words = text.strip().split()
+    all_expressions = cold_expressions + hot_expressions
+
+    # 2단계: 각 단어를 온도 키워드와 비교
+    best_temp = default_temp
+    best_word = ""
+    highest_score = 0.0
+
+    for word in words:
+        word_lower = word.lower()
+        for keyword in all_expressions:
+            final_score, _, _ = calculate_similarity_score(word_lower, keyword)
+
+            if final_score > highest_score and final_score > threshold:
+                highest_score = final_score
+                best_word = word
+                best_temp = "ice" if keyword in cold_expressions else "hot"
+
+    # 3단계: 감지된 단어 제거
+    cleaned_text = text
+    high_confidence_threshold = temp_config.get("high_confidence_threshold", 0.7)
+    if best_word and highest_score > high_confidence_threshold:
+        cleaned_text = text.replace(best_word, "").strip()
+
+    return cleaned_text, best_temp
