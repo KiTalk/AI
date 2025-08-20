@@ -398,7 +398,6 @@ def detect_temperature(text: str) -> Tuple[str, str]:
 
     # 2단계: 각 단어를 온도 키워드와 비교
     best_temp = default_temp
-    best_keyword = ""
     best_word = ""
     highest_score = 0.0
 
@@ -409,11 +408,9 @@ def detect_temperature(text: str) -> Tuple[str, str]:
 
             if final_score > highest_score and final_score > threshold:
                 highest_score = final_score
-                best_keyword = keyword
                 best_word = word
                 best_temp = "ice" if keyword in cold_expressions else "hot"
 
-    # 3단계: 감지된 단어 제거
     # 3단계: 감지된 단어 제거
     cleaned_text = text
     high_confidence_threshold = temp_config.get("high_confidence_threshold", 0.7)
