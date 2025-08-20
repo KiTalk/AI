@@ -19,6 +19,11 @@ class Settings:
     # API 설정
     NAVER_STT_URL: str = "https://naveropenapi.apigw.ntruss.com/recog/v1/stt"
     
+    # Qdrant 설정
+    QDRANT_HOST: str = os.getenv('QDRANT_HOST', 'localhost')
+    QDRANT_PORT: int = int(os.getenv('QDRANT_PORT', '6333'))
+    QDRANT_API_KEY: str = os.getenv('QDRANT_API_KEY', None)
+    
     # CORS 설정
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:5173"]
     
@@ -28,6 +33,10 @@ class Settings:
     
     # 지원 언어
     SUPPORTED_LANGUAGES: list = ['Kor', 'Eng', 'Jpn', 'Chn']
+    
+    # 음성 주문 설정
+    VOICE_ORDER_CONFIDENCE_THRESHOLD: float = 0.6  # 최소 신뢰도
+    MAX_MENU_CANDIDATES: int = 5  # 최대 메뉴 후보 수
     
     def validate(self):
         """설정 유효성 검사"""

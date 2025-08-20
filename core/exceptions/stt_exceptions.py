@@ -9,6 +9,13 @@ class STTException(Exception):
         self.code = code
         super().__init__(self.message)
 
+class VoiceOrderException(Exception):
+    """음성 주문 관련 커스텀 예외"""
+    def __init__(self, message: str, code: str = None):
+        self.message = message
+        self.code = code
+        super().__init__(self.message)
+
 def handle_stt_errors(result: dict) -> JSONResponse:
     """STT 결과에 따른 에러 처리"""
     if result["success"]:
@@ -56,4 +63,56 @@ def validate_language(lang: str) -> None:
         raise HTTPException(
             status_code=400, 
             detail=f"지원되지 않는 언어입니다. 지원 언어: {settings.SUPPORTED_LANGUAGES}"
+        )
+
+def validate_voice_order_result(order_info: dict) -> None:
+    """음성 주문 결과 유효성 검사"""
+    from config.naver_stt_settings import settings
+    
+    # 메뉴 신뢰도 검사
+    menu_similarity = order_info.get("menu", {}).get("similarity", 0.0)
+    if menu_similarity < settings.VOICE_ORDER_CONFIDENCE_THRESHOLD:
+        raise VoiceOrderException(
+            f"메뉴를 정확히 인식하지 못했습니다. (신뢰도: {menu_similarity:.2f}) "
+            "다시 명확하게 말씀해주세요.",
+            code="LOW_MENU_CONFIDENCE"
+        )
+    
+    # 수량 검사
+    quantity = order_info.get("quantity", 0)
+    if quantity <= 0 or quantity > 99:
+        raise VoiceOrderException(
+            "잘못된 수량입니다. 1개부터 99개까지 주문 가능합니다.",
+            code="INVALID_QUANTITY"
+        )
+
+def handle_voice_order_errors(error: Exception) -> JSONResponse:
+    """음성 주문 에러 처리"""
+    if isinstance(error, VoiceOrderException):
+        return JSONResponse(
+            status_code=400,
+            content={
+                "success": False,
+                "error": error.message,
+                "code": error.code
+            }
+        )
+    elif isinstance(error, HTTPException):
+        return JSONResponse(
+            status_code=error.status_code,
+            content={
+                "success": False, 
+                "error": error.detail,
+                "code": "HTTP_EXCEPTION"
+            }
+        )
+    else:
+        logger.error(f"예상치 못한 오류: {str(error)}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "error": "서버 내부 오류가 발생했습니다.",
+                "code": "INTERNAL_ERROR"
+            }
         )
