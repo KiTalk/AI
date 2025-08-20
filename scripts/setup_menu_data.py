@@ -11,12 +11,12 @@ model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 # 메뉴 데이터 (더 많은 메뉴 추가)
 menu_items = [
     # 기본 커피류
-    {"name": "아메리카노", "price": 4000, "popular": False, "temp": "hot"},
-    {"name": "아메리카노", "price": 4000, "popular": False, "temp": "ice"},
-    {"name": "카페라떼", "price": 4500, "popular": False, "temp": "hot"},
-    {"name": "카페라떼", "price": 4500, "popular": False, "temp": "ice"},
-    {"name": "바닐라 라떼", "price": 4700, "popular": False, "temp": "hot"},
-    {"name": "바닐라 라떼", "price": 4700, "popular": False, "temp": "ice"},
+    {"name": "아메리카노", "price": 4000, "popular": True, "temp": "hot"},
+    {"name": "아메리카노", "price": 4000, "popular": True, "temp": "ice"},
+    {"name": "카페라떼", "price": 4500, "popular": True, "temp": "hot"},
+    {"name": "카페라떼", "price": 4500, "popular": True, "temp": "ice"},
+    {"name": "바닐라 라떼", "price": 4700, "popular": True, "temp": "hot"},
+    {"name": "바닐라 라떼", "price": 4700, "popular": True, "temp": "ice"},
 
     # 기타 커피류
     {"name": "카푸치노", "price": 5000, "popular": False, "temp": "hot"},
