@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, Any, List, Tuple
 from .redis_session_service import redis_session_manager
+from fuzzywuzzy import fuzz
+from sentence_transformers import SentenceTransformer
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
     OrderParsingException
@@ -9,6 +11,8 @@ from core.exceptions.session_exceptions import (
     SessionNotFoundException,
     InvalidSessionStepException,
 )
+
+model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +62,9 @@ def validate_and_create_order_item(menu_item: str, quantity: int, search_menu_fu
         "menu_item": menu_info["menu_item"],
         "price": menu_info["price"],
         "quantity": quantity,
-        "original": f"{menu_item} {quantity}개"
+        "original": f"{menu_item} {quantity}개",
+        "popular": menu_info["popular"],
+        "temp": menu_info["temp"]
     }
 
 # 주문 목록을 문자열로 포맷팅
@@ -153,3 +159,27 @@ def generate_update_message(changes: Dict) -> str:
         messages.append(f"삭제: {', '.join(removed_items)}")
 
     return "주문이 업데이트되었습니다. " + " | ".join(messages)
+
+# 벡터 + fuzzy 유사도 점수 계산
+def calculate_similarity_score(input_text: str, target_text: str, threshold: float = 0.45) -> Tuple[
+    float, float, float]:
+
+    # 1. 벡터 유사도 계산
+    input_vector = model.encode([input_text.lower()])[0]
+    target_vector = model.encode([target_text.lower()])[0]
+
+    import numpy as np
+    dot_product = float(np.dot(input_vector, target_vector))
+    norm_product = float(np.linalg.norm(input_vector) * np.linalg.norm(target_vector))
+    vector_score = dot_product / norm_product
+
+    # 2. fuzzy 점수 계산
+    ratio_score = fuzz.ratio(target_text, input_text.lower()) / 100
+    partial_score = fuzz.partial_ratio(target_text, input_text.lower()) / 100
+    token_score = fuzz.token_sort_ratio(target_text, input_text.lower()) / 100
+    best_fuzzy = max(ratio_score, partial_score, token_score)
+
+    # 3. 결합 점수
+    final_score = 0.7 * vector_score + 0.3 * best_fuzzy
+
+    return final_score, vector_score, best_fuzzy
