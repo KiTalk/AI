@@ -95,7 +95,8 @@ async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderMan
     try:
         result = remove_order_item(
             session_id=session_id,  # 수정: request.session_id → session_id
-            menu_item=request.menu_item
+            menu_item=request.menu_item,
+            temp=request.temp
         )
 
         return OrderManagementResponse(
