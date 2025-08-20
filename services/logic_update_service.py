@@ -5,6 +5,7 @@ from .logic_service import (
     validate_single_order_simplified,
     search_menu
 )
+from services.similarity_utils import warmup_embeddings
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
     OrderParsingException
@@ -37,6 +38,10 @@ def patch_orders(session_id: str, order_items: List[Dict[str, Any]]) -> Dict[str
         # 기존 주문 목록 조회
         existing_orders = session["data"]["orders"]
 
+        menu_names = [item["menu_item"] for item in order_items]
+        if menu_names:
+            warmup_embeddings(menu_names)
+
         # 새로운 주문 목록 생성 및 검증
         new_orders = []
         for item in order_items:
@@ -45,6 +50,7 @@ def patch_orders(session_id: str, order_items: List[Dict[str, Any]]) -> Dict[str
                 item["quantity"],
                 search_menu
             )
+            order_item["temp"] = item["temp"]
             new_orders.append(order_item)
 
         validate_order_list(new_orders)
@@ -77,6 +83,22 @@ def add_additional_order(session_id: str, order_text: str) -> Dict[str, Any]:
 
         # 새로운 주문 파싱
         individual_orders = split_multiple_orders(order_text)
+
+        menu_texts = []
+        for order in individual_orders:
+            try:
+                # 간단한 메뉴명 추출 (validate 전에 예열용)
+                # 정확한 추출은 validate_single_order_simplified에서 수행
+                words = order.strip().split()
+                if words:
+                    menu_texts.extend(words)  # 단어별로 추가
+            except:
+                continue  # 예열 실패는 무시
+
+        # 배치 임베딩 예열
+        if menu_texts:
+            warmup_embeddings(menu_texts)
+
         new_orders = []
 
         for order in individual_orders:
@@ -84,7 +106,8 @@ def add_additional_order(session_id: str, order_text: str) -> Dict[str, Any]:
                 validated_order = validate_single_order_simplified(order)
                 new_orders.append(validated_order)
             except MenuNotFoundException as e:
-                raise e
+                logger.warning(f"메뉴를 찾을 수 없음: {order}")
+                raise MenuNotFoundException(f"'{order}' 메뉴를 찾을 수 없습니다. 메뉴명을 다시 확인해주세요.")
 
         # 기존 주문에 새 주문들 단순 추가 (중복 체크 없음)
         existing_orders = session["data"]["orders"]
@@ -107,14 +130,23 @@ def add_additional_order(session_id: str, order_text: str) -> Dict[str, Any]:
         raise OrderParsingException("추가 주문 처리 중 오류가 발생했습니다")
 
 # 특정 메뉴를 주문에서 완전히 삭제
-def remove_order_item(session_id: str, menu_item: str) -> Dict[str, Any]:
+def remove_order_item(session_id: str, menu_item: str, temp: str) -> Dict[str, Any]:
     try:
         # 세션 검증
         session = validate_session(session_id, "packaging")
 
         # 메뉴 제거
         orders = session["data"]["orders"]
-        filtered_orders = remove_order_by_menu_item(orders, menu_item)
+        if not orders:
+            raise OrderParsingException("삭제할 주문이 없습니다.")
+
+        menu_exists = any(order["menu_item"] == menu_item and order["temp"] == temp for order in orders)
+        if not menu_exists:
+            existing_menu_names = [order["menu_item"] for order in orders]
+            logger.info(f"삭제하려는 메뉴 '{menu_item}'이 주문에 없음. 기존 메뉴: {existing_menu_names}")
+            raise MenuNotFoundException(f"'{menu_item}'은(는) 현재 주문에 없습니다.")
+
+        filtered_orders = remove_order_by_menu_item(orders, menu_item, temp)
 
         # 세션 업데이트
         success = update_session_orders(session_id, filtered_orders)
