@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 # 전화번호 입력 여부 선택 처리
 def process_phone_choice(session_id: str, wants_phone: bool) -> Dict[str, Any]:
     try:
-        # packaging 단계에서만 접근 가능
-        _ = validate_session(session_id, "packaging")
+        session = validate_session(session_id)
+        if session["step"] not in ["packaging", "packaging_updated", "completed", "temp_updated"]:
+            raise InvalidSessionStepException(session["step"], "packaging, packaging_updated or completed")
 
         if wants_phone:
             # 전화번호 입력하겠다고 선택
@@ -86,12 +87,29 @@ def complete_order(session_id: str) -> Dict[str, Any]:
         # packaging, phone_choice 또는 phone_input 단계에서 접근 가능
         session = validate_session(session_id)
 
-        if session["step"] not in ["packaging", "phone_choice", "phone_input"]:
-            raise InvalidSessionStepException(session["step"], "packaging, phone_choice or phone_input")
+        if session["step"] not in ["packaging", "packaging_updated", "phone_choice", "phone_input", "completed", "temp_updated"]:
+            raise InvalidSessionStepException(session["step"], "packaging, packaging_updated, phone_choice, phone_input or completed")
 
         # 세션 데이터 가져오기
-        orders = session["data"]["orders"]
-        packaging_type = session["data"]["packaging_type"]
+        if "orders" in session["data"]:
+            # 일반 로직에서 온 경우
+            orders = session["data"]["orders"]
+            packaging_type = session["data"]["packaging_type"]
+        else:
+            # order-at-once에서 온 경우
+            order_at_once = session["data"]["order_at_once"]
+            menu = order_at_once["menu"]
+            orders = [{
+                "menu_id": menu["menu_id"],
+                "menu_item": menu["name"],
+                "price": menu["price"],
+                "quantity": menu["quantity"],
+                "temp": menu["temp"],
+                "original": f"{menu['name']} {menu['quantity']}개",
+                "popular": menu.get("popular", False)
+            }]
+            packaging_type = order_at_once["packaging"]
+
         phone_number = session["data"].get("phone_number")  # 없을 수도 있음
 
         if not orders:
@@ -103,7 +121,7 @@ def complete_order(session_id: str) -> Dict[str, Any]:
         # 세션 완료로 변경 (5분간 유지)
         success = redis_session_manager.update_session(
             session_id,
-            "completed",
+            "fully_completed",  # completed → fully_completed로 변경
             {
                 "order_id": order_id,
                 "saved_at": datetime.now().isoformat()
