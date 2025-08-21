@@ -13,6 +13,7 @@ from config.config_cache import warmup_config_cache
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from database.simple_db import simple_menu_db
+from routers.phone_router import router as phone_router
 
 load_dotenv()
 
@@ -22,14 +23,20 @@ set_model_getter(lambda: model)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # 시작 시
-
     logger.info("🚀 FastAPI 애플리케이션 시작")
 
-    # MySQL 연결 테스트 추가
     if simple_menu_db.test_connection():
-        logger.info("✅ MySQL 데이터베이스 연결 성공")
+        logger.info("MySQL 데이터베이스 연결 성공")
+
+        # 테이블 자동 생성 추가
+        from database.migrations import create_tables_if_not_exists
+        try:
+            create_tables_if_not_exists()
+            logger.info("데이터베이스 테이블 초기화 완료")
+        except Exception as e:
+            logger.error(f"테이블 생성 실패: {e}")
     else:
-        logger.error("❌ MySQL 데이터베이스 연결 실패")
+        logger.error("MySQL 데이터베이스 연결 실패")
 
     warmup_config_cache()
     logger.info("설정 캐시 예열 완료")
@@ -63,6 +70,7 @@ app.include_router(logic_router)
 app.include_router(logic_update_router)
 app.include_router(order_at_once_router)
 app.include_router(order_retry_router)
+app.include_router(phone_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 

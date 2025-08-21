@@ -16,6 +16,8 @@ class SessionExpiredException(HTTPException):
 
 class InvalidSessionStepException(HTTPException):
     def __init__(self, current_step: str, required_step: str):
+        self.current_step = current_step
+        self.required_step = required_step
         super().__init__(
             status_code=400,
             detail=f"현재 단계({current_step})에서는 실행할 수 없습니다. 필요한 단계: {required_step}"
