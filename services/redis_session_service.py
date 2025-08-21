@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 # Redis 기반 세션 관리 클래스
 class RedisSessionManager:
-    VALID_STEPS = ["started", "packaging", "phone_choice", "phone_input", "completed"]
+    VALID_STEPS = ["started", "packaging", "phone_choice", "phone_input", "completed", "fully_completed"]
 
     # 세션 단계 유효성 검사
     def is_valid_step(self, step: str) -> bool:
