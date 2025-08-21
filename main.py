@@ -11,6 +11,10 @@ from sentence_transformers import SentenceTransformer
 from services.similarity_utils import set_model_getter
 from config.config_cache import warmup_config_cache
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+from database.simple_db import simple_menu_db
+
+load_dotenv()
 
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 set_model_getter(lambda: model)
@@ -18,6 +22,15 @@ set_model_getter(lambda: model)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # 시작 시
+
+    logger.info("🚀 FastAPI 애플리케이션 시작")
+
+    # MySQL 연결 테스트 추가
+    if simple_menu_db.test_connection():
+        logger.info("✅ MySQL 데이터베이스 연결 성공")
+    else:
+        logger.error("❌ MySQL 데이터베이스 연결 실패")
+
     warmup_config_cache()
     logger.info("설정 캐시 예열 완료")
     yield
