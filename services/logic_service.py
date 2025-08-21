@@ -7,6 +7,7 @@ import inspect
 from functools import lru_cache
 from typing import Tuple, List, Dict, Any, Optional
 from .redis_session_service import redis_session_manager
+from database.simple_db import simple_menu_db
 from core.exceptions.logic_exceptions import (
     MenuNotFoundException,
     OrderParsingException,
@@ -132,11 +133,25 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
         if top[5] >= thresholds["menu_similarity_threshold"]:
             # 온도 우선순위 적용: 사용자지정 > DB온도 > 기본값
             final_temp = user_temp if temp_detected else top[4]  # DB온도 사용
-            
+
+            # 🔥 MySQL에서 가격 조회!
+            menu_id = top[0]
+
+            try:
+                mysql_price = simple_menu_db.get_menu_price(menu_id)
+                if mysql_price is None:
+                    logger.warning(f"MySQL에서 menu_id {menu_id}의 가격 없음. Qdrant 백업 사용.")
+                    mysql_price = top[2]
+                else:
+                    logger.info(f"MySQL 가격 조회 성공: menu_id {menu_id} = {mysql_price}원")
+            except Exception as e:
+                logger.error(f"MySQL 가격 조회 중 예외 발생: {e}. Qdrant 백업 사용.")
+                mysql_price = top[2]
+
             return {
                 "menu_id": top[0],
                 "menu_item": top[1],
-                "price": top[2],
+                "price": mysql_price,
                 "popular": top[3],
                 "temp": final_temp,
             }
