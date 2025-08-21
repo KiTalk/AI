@@ -56,6 +56,7 @@ def validate_and_create_order_item(menu_item: str, quantity: int, search_menu_fu
         raise MenuNotFoundException(f"'{menu_item}' 메뉴를 찾을 수 없습니다.")
 
     return {
+        "menu_id": menu_info["menu_id"],
         "menu_item": menu_info["menu_item"],
         "price": menu_info["price"],
         "quantity": quantity,

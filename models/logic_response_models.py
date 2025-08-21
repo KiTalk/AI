@@ -2,6 +2,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class OrderItem(BaseModel):
+    menu_id: int
     menu_item: str
     price: int
     quantity: int

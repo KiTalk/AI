@@ -129,14 +129,15 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
 
         thresholds = get_similarity_thresholds()
 
-        if top[4] >= thresholds["menu_similarity_threshold"]:
+        if top[5] >= thresholds["menu_similarity_threshold"]:
             # 온도 우선순위 적용: 사용자지정 > DB온도 > 기본값
-            final_temp = user_temp if temp_detected else top[3]  # DB온도 사용
+            final_temp = user_temp if temp_detected else top[4]  # DB온도 사용
             
             return {
-                "menu_item": top[0],
-                "price": top[1],
-                "popular": top[2],
+                "menu_id": top[0],
+                "menu_item": top[1],
+                "price": top[2],
+                "popular": top[3],
                 "temp": final_temp,
             }
 
@@ -169,29 +170,30 @@ def _process_menu_results(results, cleaned_menu: str) -> List[Tuple]:
 
     for p in results.points:  # ← 여기만 수정!
         payload = p.payload or {}
+        menu_id = payload.get("menu_id")
         menu_name = payload.get("menu_item")
         price = payload.get("price")
-        if menu_name and price is not None:
+        if menu_id and menu_name and price is not None:
             menu_names.append(menu_name)
-            valid_results.append((menu_name, price, payload.get('popular', False), payload.get('temp', 'hot')))
+            valid_results.append((menu_id, menu_name, price, payload.get('popular', False), payload.get('temp', 'hot')))
 
     # 배치 임베딩 예열
     if menu_names:
         warmup_embeddings([cleaned_menu] + menu_names)
 
     # 유사도 계산
-    for menu_name, price, popular, db_temp in valid_results:
+    for menu_id, menu_name, price, popular, db_temp in valid_results:
         final_score, vector_score, best_fuzzy = calculate_similarity_score(cleaned_menu, menu_name)
         if popular:
             final_score += pop_bonus
-        enhanced_results.append((menu_name, price, popular, db_temp, final_score, vector_score, best_fuzzy))
+        enhanced_results.append((menu_id, menu_name, price, popular, db_temp, final_score, vector_score, best_fuzzy))
 
-    enhanced_results.sort(key=lambda x: x[4], reverse=True)
+    enhanced_results.sort(key=lambda x: x[5], reverse=True)
 
     # 로깅 (상위 3개만)
     logger.info(f"'{cleaned_menu}' 검색 결과:")
-    for menu, price, popular, temp, final, _, _ in enhanced_results[:3]:
-        logger.info(f"  - {menu}[{temp.upper()}]({price}원): 최종={final:.3f}")
+    for menu_id, menu, price, popular, temp, final, _, _ in enhanced_results[:3]:  # 🔥 8개 값으로 수정
+        logger.info(f"  - ID:{menu_id} {menu}[{temp.upper()}]({price}원): 최종={final:.3f}")
 
     return enhanced_results
 
@@ -432,6 +434,7 @@ def validate_single_order_simplified(order: str) -> Dict[str, Any]:
         quantity = 0
 
     return {
+        "menu_id": menu["menu_id"],
         "menu_item": menu["menu_item"],
         "price": menu["price"],
         "quantity": quantity,
