@@ -19,8 +19,14 @@ def validate_session(session_id: str, required_step: str = None) -> Dict[str, An
     if not session:
         raise SessionNotFoundException(session_id)
 
-    if required_step and session["step"] != required_step:
-        raise InvalidSessionStepException(session["step"], required_step)
+    if session.get("step") is not None and required_step:
+        if session["step"] != required_step:
+            raise InvalidSessionStepException(session["step"], required_step)
+
+    # step이 null인 경우 기본 데이터 검증만
+    if session.get("step") is None:
+        if not session["data"].get("orders"):
+            raise OrderParsingException("주문 정보가 없습니다")
 
     return session
 
