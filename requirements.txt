@@ -38,3 +38,5 @@ fuzzywuzzy==0.18.0           # 문자열 유사도 계산
 # Redis 관련
 redis==5.0.1
 hiredis==2.3.2
+
+pymysql==1.1.1
