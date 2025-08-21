@@ -44,14 +44,12 @@ class AddOrderRequest(BaseModel):
 
 # 주문 삭제
 class RemoveOrderRequest(BaseModel):
-    menu_item: str = Field(..., description="삭제할 메뉴명")
-    temp: str = Field(..., description="ice/hot")
+    menu_id: int = Field(..., description="삭제할 메뉴 ID")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "menu_item": "아메리카노",
-                "temp": "hot"
+                "menu_id": 1
             }
         }
 

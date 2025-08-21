@@ -130,7 +130,7 @@ def add_additional_order(session_id: str, order_text: str) -> Dict[str, Any]:
         raise OrderParsingException("추가 주문 처리 중 오류가 발생했습니다")
 
 # 특정 메뉴를 주문에서 완전히 삭제
-def remove_order_item(session_id: str, menu_item: str, temp: str) -> Dict[str, Any]:
+def remove_order_item(session_id: str, menu_id: int) -> Dict[str, Any]:
     try:
         # 세션 검증
         session = validate_session(session_id, "packaging")
@@ -140,13 +140,15 @@ def remove_order_item(session_id: str, menu_item: str, temp: str) -> Dict[str, A
         if not orders:
             raise OrderParsingException("삭제할 주문이 없습니다.")
 
-        menu_exists = any(order["menu_item"] == menu_item and order["temp"] == temp for order in orders)
+        menu_exists = any(order["menu_id"] == menu_id for order in orders)
         if not menu_exists:
-            existing_menu_names = [order["menu_item"] for order in orders]
-            logger.info(f"삭제하려는 메뉴 '{menu_item}'이 주문에 없음. 기존 메뉴: {existing_menu_names}")
-            raise MenuNotFoundException(f"'{menu_item}'은(는) 현재 주문에 없습니다.")
+            existing_menu_ids = [order["menu_id"] for order in orders]
+            logger.info(f"삭제하려는 menu_id '{menu_id}'가 주문에 없음. 기존 menu_id: {existing_menu_ids}")
+            raise MenuNotFoundException(f"menu_id {menu_id}에 해당하는 주문이 없습니다.")
 
-        filtered_orders = remove_order_by_menu_item(orders, menu_item, temp)
+        deleted_menu = next(order["menu_item"] for order in orders if order["menu_id"] == menu_id)
+
+        filtered_orders = [order for order in orders if order["menu_id"] != menu_id]
 
         # 세션 업데이트
         success = update_session_orders(session_id, filtered_orders)
@@ -154,7 +156,7 @@ def remove_order_item(session_id: str, menu_item: str, temp: str) -> Dict[str, A
             raise SessionUpdateFailedException(session_id, "주문 항목 삭제")
 
         # 응답 생성
-        message = f"'{menu_item}'이(가) 주문에서 삭제되었습니다."
+        message = f"'{deleted_menu}'이(가) 주문에서 삭제되었습니다."
         return create_order_response(message, filtered_orders)
 
     except (SessionNotFoundException, InvalidSessionStepException,
