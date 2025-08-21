@@ -71,6 +71,7 @@ class OrderManagementResponse(BaseModel):
                 "message": "'라면' 수량이 5개로 변경되었습니다.",
                 "orders": [
                     {
+                        "menu_id": 1,
                         "menu_item": "라면",
                         "price": 3500,
                         "quantity": 5,
