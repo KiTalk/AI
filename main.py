@@ -7,6 +7,7 @@ from routers.logic_update_router import router as logic_update_router
 from routers.order_at_once import router as order_at_once_router
 from routers.order_retry import router as order_retry_router
 from routers.auth_owner import router as auth_router
+from routers.owner_orders import router as owner_orders_router
 from config.swagger_config import setup_swagger
 from sentence_transformers import SentenceTransformer
 from services.similarity_utils import set_model_getter
@@ -73,6 +74,7 @@ app.include_router(order_at_once_router)
 app.include_router(order_retry_router)
 app.include_router(phone_router)
 app.include_router(auth_router)
+app.include_router(owner_orders_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 
