@@ -23,7 +23,7 @@ set_model_getter(lambda: model)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # 시작 시
-    logger.info("🚀 FastAPI 애플리케이션 시작")
+    logger.info("FastAPI 애플리케이션 시작")
 
     if simple_menu_db.test_connection():
         logger.info("MySQL 데이터베이스 연결 성공")
