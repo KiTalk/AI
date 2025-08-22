@@ -33,10 +33,22 @@ logger = logging.getLogger(__name__)
 # 전체 주문 부분적 업데이트 함수
 def patch_orders(session_id: str, order_items: List[Dict[str, Any]]) -> Dict[str, Any]:
     try:
-        session = validate_session(session_id, "packaging")
+        try:
+            session = validate_session(session_id, "packaging")
+        except InvalidSessionStepException:
+            session = validate_session(session_id, "completed")
+
+        # 기존 주문 목록 조회 - 안전하게 처리
+        session_data = session.get("data", {})
 
         # 기존 주문 목록 조회
-        existing_orders = session["data"]["orders"]
+        if "order_at_once" in session_data:
+            # order-at-once에서 온 세션의 경우
+            existing_orders = []  # 빈 리스트로 초기화하거나
+            # 또는 order_at_once 데이터를 orders 형태로 변환
+        else:
+            # 일반적인 경우
+            existing_orders = session_data.get("orders", [])
 
         menu_names = [item["menu_item"] for item in order_items]
         if menu_names:
