@@ -55,13 +55,12 @@ async def process_order_at_once(
           "popular": bool(menu.get("popular", False)),
           "temp": menu.get("temp"),
         },
-        total_items=qty,
+        total_items=1,
         total_price=qty * price,
         packaging=pack_enum,
         session_id=order_result.get("session_id", session_id),
         next_step=None
     )
-
 
 @router.get("/session/{session_id}", summary="Redis 세션 조회")
 async def get_session_order(session_id: str):
@@ -75,6 +74,7 @@ async def get_session_order(session_id: str):
 
     data = session.get("data", {})
     order_at_once = data.get("order_at_once", {})
+    menu_obj = order_at_once.get("menu", {})  # ← 이 부분 추가
 
     menu_item = data.get("menu_item", "")
     if not menu_item:
@@ -85,7 +85,7 @@ async def get_session_order(session_id: str):
 
     menu_id = data.get("menu_id")
     quantity = data.get("quantity", 1)
-    price = order_at_once.get("price", 0) or 0
+    price = menu_obj.get("price", 0) or 0
     packaging = data.get("packaging_type") or None
     pack_enum = PackagingType(packaging) if packaging in {"포장", "매장식사"} else None
 
@@ -97,10 +97,10 @@ async def get_session_order(session_id: str):
         "price": price,
         "quantity": quantity,
         "original": order_at_once.get("original_text", ""),
-        "popular": bool(order_at_once.get("popular", False)),
-        "temp": order_at_once.get("temp", "")
+        "popular": bool(menu_obj.get("popular", False)),
+        "temp": menu_obj.get("temp", "")
       },
-      "total_items": quantity,
+      "total_items": 1,
       "total_price": price * quantity,
       "packaging": pack_enum,
       "session_id": session_id,
