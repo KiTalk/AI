@@ -90,10 +90,10 @@ def get_confirmation_keywords() -> Tuple[List[str], List[str]]:
 @lru_cache(maxsize=16)
 def get_packaging_keywords() -> Dict[str, str]:
     return {
-        "포장하기": "포장하기",
-        "takeout": "포장하기",
-        "먹고가기": "먹고가기",
-        "dine_in": "먹고가기"
+        "포장": "포장",
+        "takeout": "포장",
+        "매장식사": "매장식사",
+        "dine_in": "매장식사"
     }
 
 
