@@ -30,14 +30,15 @@ class OrderRetryService:
             "packaging": packaging,
         }
 
-        session_manager.update_session(
+        if not session_manager.update_session(
             session_id=session_id,
             step="packaging_updated",
             data={
                 "packaging_type": packaging,
                 "order_at_once": new_order,
             },
-        )
+        ):
+            raise HTTPException(status_code=500, detail="Redis 세션 업데이트 실패")
 
         logger.info(f"[order-retry] 포장여부 업데이트: {session_id} -> {packaging}")
         return {
@@ -55,7 +56,6 @@ class OrderRetryService:
         old_data = (session.get("data") or {})
         old_order = (old_data.get("order_at_once") or {})
 
-        # 현재 메뉴명 가져와 temp에 맞는 menu_id 재해결
         current_name = old_data.get("menu_item") or (old_order.get("menu", {}) or {}).get("name")
         new_menu_id = self.base.resolve_menu_id(current_name, temp) if current_name else None
 
@@ -65,14 +65,16 @@ class OrderRetryService:
             "menu_id": new_menu_id if new_menu_id is not None else old_order.get("menu_id"),
         }
 
-        session_manager.update_session(
+        if not session_manager.update_session(
             session_id=session_id,
             step="temp_updated",
             data={
-                "menu_id": new_menu_id if new_menu_id is not None else old_data.get("menu_id"),
+                "menu_id": new_menu_id if new_menu_id is not None else old_data.get(
+                    "menu_id"),
                 "order_at_once": new_order,
             },
-        )
+        ):
+            raise HTTPException(status_code=500, detail="Redis 세션 업데이트 실패")
 
         logger.info(f"[order-retry] 온도 업데이트: {session_id} -> {temp} (menu_id={new_menu_id})")
         return {
