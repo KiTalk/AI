@@ -11,12 +11,13 @@ from services.owner_order_service import (
     ConflictError,
 )
 
-router = APIRouter(prefix="/owner", tags=["Owner Orders"])
+router = APIRouter(prefix="/owner", tags=["Owner"])
 
 @router.get(
     "/orders",
     response_model=List[OrderOut],
-    summary="주문 내역 조회(점주 전용)"
+    summary="주문 내역 조회(점주 전용)",
+    dependencies=[Depends(get_current_owner)]
 )
 def owner_list_orders(
     status_filter: Optional[Literal["PAID", "COMPLETED"]] = Query(
@@ -29,7 +30,8 @@ def owner_list_orders(
 @router.patch(
     "/orders/{order_id}/mark-completed",
     response_model=OrderStatusUpdateRes,
-    summary="주문 상태를 COMPLETED로 변경"
+    summary="주문 상태를 COMPLETED로 변경",
+    dependencies=[Depends(get_current_owner)]
 )
 def owner_mark_completed(order_id: int, _owner = Depends(get_current_owner)):
     try:
@@ -43,7 +45,8 @@ def owner_mark_completed(order_id: int, _owner = Depends(get_current_owner)):
 @router.patch(
     "/orders/{order_id}/mark-paid",
     response_model=OrderStatusUpdateRes,
-    summary="주문 상태를 PAID로 변경"
+    summary="주문 상태를 PAID로 변경",
+    dependencies=[Depends(get_current_owner)]
 )
 def owner_mark_paid(order_id: int, _owner = Depends(get_current_owner)):
     try:

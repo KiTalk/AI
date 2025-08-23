@@ -3,7 +3,7 @@ from starlette import status
 from schemas.auth import OwnerLoginReq, OwnerLoginRes
 from core.common.security import create_access_token, validate_owner_login
 
-router = APIRouter(prefix="/auth", tags=["Auth (Owner)"])
+router = APIRouter(prefix="/owner", tags=["Owner"])
 
 @router.post("/login", response_model=OwnerLoginRes, summary="점주 로그인 (JWT 발급)")
 def owner_login(req: OwnerLoginReq):
