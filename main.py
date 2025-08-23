@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from config.naver_stt_settings import settings, logger
@@ -8,16 +11,14 @@ from routers.order_at_once import router as order_at_once_router
 from routers.order_retry import router as order_retry_router
 from routers.auth_owner import router as auth_router
 from routers.owner_orders import router as owner_orders_router
+from routers.owner_menu import router as owner_menu_router
 from config.swagger_config import setup_swagger
 from sentence_transformers import SentenceTransformer
 from services.similarity_utils import set_model_getter
 from config.config_cache import warmup_config_cache
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
 from database.simple_db import simple_menu_db
 from routers.phone_router import router as phone_router
-
-load_dotenv()
 
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 set_model_getter(lambda: model)
@@ -75,6 +76,7 @@ app.include_router(order_retry_router)
 app.include_router(phone_router)
 app.include_router(auth_router)
 app.include_router(owner_orders_router)
+app.include_router(owner_menu_router)
 
 logger.info("FastAPI 애플리케이션이 초기화되었습니다.")
 
