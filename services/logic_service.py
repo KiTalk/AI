@@ -544,3 +544,42 @@ def detect_temperature(text: str) -> Tuple[str, str, bool]:
     logger.info(f"🔍 감지결과 - 온도: {best_temp}, 제거단어: '{best_word}', 정리된텍스트: '{cleaned_text}', 감지됨: {temp_detected}")
 
     return cleaned_text, best_temp, temp_detected
+
+# 세션의 각 주문에 profile 정보 추가
+def add_profiles_to_orders(session_id: str) -> List[Dict[str, Any]]:
+    try:
+        session = redis_session_manager.get_session(session_id)
+        if not session:
+            raise SessionNotFoundException(session_id)
+
+        orders = session["data"].get("orders", [])
+        if not orders:
+            return []
+
+        # 각 order에 profile 추가
+        enhanced_orders = []
+
+        for order in orders:
+            # 기존 order 복사
+            enhanced_order = order.copy()
+
+            menu_id = order.get("menu_id")
+            if menu_id:
+                try:
+                    profile = simple_menu_db.get_user_profile(menu_id)
+                    enhanced_order["profile"] = profile  # null이면 null로 저장
+                except Exception as e:
+                    logger.error(f"menu_id {menu_id} Profile 조회 오류: {e}")
+                    enhanced_order["profile"] = None
+            else:
+                enhanced_order["profile"] = None
+
+            enhanced_orders.append(enhanced_order)
+
+        return enhanced_orders
+
+    except SessionNotFoundException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile 추가 중 예상치 못한 오류: {e}")
+        return []

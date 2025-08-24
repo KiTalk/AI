@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from services.logic_service import process_order, process_packaging, analyze_confirmation
+from services.logic_service import process_order, process_packaging, analyze_confirmation, add_profiles_to_orders
 from models.logic_request_models import MenuRequest, PackagingRequest
 from models.logic_response_models import StandardResponse, ErrorResponse, SessionResponse
 
@@ -107,7 +107,7 @@ async def get_full_session(session_id: str):
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
 
-    orders = session["data"].get("orders", [])
+    orders = add_profiles_to_orders(session_id)
     total_items = session["data"].get("total_items", 0)
     total_price = sum(order["price"] * order["quantity"] for order in orders) if orders else 0
     packaging = session["data"].get("packaging_type")
