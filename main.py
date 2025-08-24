@@ -23,6 +23,30 @@ from routers.phone_router import router as phone_router
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')
 set_model_getter(lambda: model)
 
+# 애플리케이션 시작 시 초기화 스크립트들을 실행
+async def run_initialization_scripts():
+    scripts_to_run = [
+        ("메뉴 데이터 초기화", "scripts.setup_menu_data"),
+        ("포장 옵션 데이터 초기화", "scripts.setup_packaging_data"),
+        ("수량 패턴 설정", "scripts.setup_quantity_patterns")
+    ]
+    
+    for script_name, module_name in scripts_to_run:
+        try:
+            logger.info(f"{script_name} 시작...")
+            
+            # 동적으로 스크립트 모듈 import하여 실행
+            __import__(module_name)
+            
+            logger.info(f"{script_name} 완료")
+            
+        except ImportError as e:
+            logger.error(f"{script_name} 모듈을 찾을 수 없습니다: {e}")
+        except Exception as e:
+            logger.error(f"{script_name} 실행 중 오류: {e}")
+            # 치명적이지 않은 에러는 계속 진행
+            continue
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     # 시작 시
@@ -40,6 +64,9 @@ async def lifespan(_: FastAPI):
             logger.error(f"테이블 생성 실패: {e}")
     else:
         logger.error("MySQL 데이터베이스 연결 실패")
+
+    # 초기화 스크립트 실행
+    await run_initialization_scripts()
 
     warmup_config_cache()
     logger.info("설정 캐시 예열 완료")
