@@ -4,6 +4,7 @@ from models.order_response_models import StandardResponse, ErrorResponse, Packag
 
 from services.order_at_once_service import OrderAtOnceService
 from services.redis_session_service import session_manager
+from database.simple_db import simple_menu_db
 
 router = APIRouter(prefix="/order-at-once", tags=["Order At Once"])
 
@@ -88,6 +89,7 @@ async def get_session_order(session_id: str):
     price = menu_obj.get("price", 0) or 0
     packaging = data.get("packaging_type") or None
     pack_enum = PackagingType(packaging) if packaging in {"포장", "매장식사"} else None
+    profile = simple_menu_db.get_user_profile(menu_id)
 
     return {
       "message": "세션 조회 완료",
@@ -98,6 +100,7 @@ async def get_session_order(session_id: str):
         "quantity": quantity,
         "original": order_at_once.get("original_text", ""),
         "popular": bool(menu_obj.get("popular", False)),
+        "profile": profile,
         "temp": menu_obj.get("temp", "")
       },
       "total_items": 1,
