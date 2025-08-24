@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union
 
 class OrderItem(BaseModel):
     menu_id: int
@@ -9,6 +9,7 @@ class OrderItem(BaseModel):
     original: str
     popular: bool = False
     temp: str = "hot"
+    profile: Optional[Union[str, Dict[str, Any]]] = None
 
 class StandardResponse(BaseModel):
     message: str

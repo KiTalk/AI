@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Dict, Any
 from enum import Enum
 from pydantic import BaseModel, Field
 
@@ -15,6 +15,7 @@ class OrderItem(BaseModel):
     original: str = Field(..., description="원본 텍스트")
     popular: Optional[bool] = Field(None, description="인기 메뉴 여부")
     temp: Optional[str] = Field(None, description="온도 옵션 (hot/ice/none)")
+    profile: Optional[Dict[str, Any]] = None
 
 class StandardResponse(BaseModel):
     message: str

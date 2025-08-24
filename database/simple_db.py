@@ -1,5 +1,6 @@
 import pymysql
 import logging
+import json
 from typing import Optional, Dict, List
 import os
 from dotenv import load_dotenv
@@ -86,6 +87,42 @@ class SimpleMenuDB:
         except Exception as e:
             logger.error(f"MySQL 연결 테스트 실패: {e}")
             return False
+        finally:
+            connection.close()
+
+# menu_id로 profile 조회 (null이면 null 반환)
+    def get_user_profile(self, menu_id: int) -> Optional[Dict]:
+        connection = self.get_connection()
+        if not connection:
+            return None
+
+        try:
+            with connection.cursor(pymysql.cursors.DictCursor) as cursor:
+                # menu 테이블에서 profile 컬럼 조회
+                sql = "SELECT profile FROM menu WHERE id = %s AND is_active = 1"
+                cursor.execute(sql, (menu_id,))
+                result = cursor.fetchone()
+
+                if result and result['profile']:
+                    logger.info(f"Profile 조회 성공: menu_id={menu_id}")
+                    profile_data = result['profile']
+                    
+                    # profile이 JSON 문자열이면 파싱
+                    if isinstance(profile_data, str):
+                        try:
+                            return json.loads(profile_data)
+                        except json.JSONDecodeError:
+                            # JSON이 아닌 일반 문자열(URL 등)이면 그대로 반환
+                            return profile_data
+                    else:
+                        return profile_data
+                else:
+                    logger.info(f"Profile 없음: menu_id={menu_id}")
+                    return None
+
+        except Exception as e:
+            logger.error(f"Profile 조회 실패 (menu_id: {menu_id}): {e}")
+            return None
         finally:
             connection.close()
 
