@@ -23,13 +23,13 @@ def encode_cached(text: str) -> Tuple[float, ...]:
     vec = model.encode([text.lower()], show_progress_bar=False, convert_to_numpy=True)[0]
     return tuple(vec.tolist())
 
-# 두 벡터(tuple)의 코사인 유사도.
+# 두 벡터의 코사인 유사도
 def cosine_from_vecs(a: Tuple[float, ...], b: Tuple[float, ...]) -> float:
     a_np = np.asarray(a, dtype=np.float32)
     b_np = np.asarray(b, dtype=np.float32)
 
-    norm_a = float(np.linalg.norm(a_np))  # float로 변환
-    norm_b = float(np.linalg.norm(b_np))  # float로 변환
+    norm_a = float(np.linalg.norm(a_np))
+    norm_b = float(np.linalg.norm(b_np))
 
     if norm_a == 0 or norm_b == 0:
         return 0.0
@@ -39,7 +39,7 @@ def cosine_from_vecs(a: Tuple[float, ...], b: Tuple[float, ...]) -> float:
 
     return dot_product / denominator
 
-#  결합 점수(final), 벡터 점수, fuzzy 최고 점수를 반환.
+#  결합 점수(final), 벡터 점수, fuzzy 최고 점수를 반환
 def combined_score_from_vecs(
     input_vec: Tuple[float, ...],
     target_vec: Tuple[float, ...],
@@ -59,7 +59,7 @@ def combined_score_from_vecs(
     final = vector_weight * vector_score + (1 - vector_weight) * best_fuzzy
     return final, vector_score, best_fuzzy
 
-# 텍스트 두 개를 받아 캐시 임베딩 후 결합 점수를 계산.
+# 텍스트 두 개를 받아 캐시 임베딩 후 결합 점수 계산
 def combined_score_from_texts(
     input_text: str,
     target_text: str,

@@ -3,21 +3,18 @@ from fastapi.responses import JSONResponse
 from config.naver_stt_settings import logger
 
 class STTException(Exception):
-    """STT 관련 커스텀 예외"""
     def __init__(self, message: str, code: str = None):
         self.message = message
         self.code = code
         super().__init__(self.message)
 
 class VoiceOrderException(Exception):
-    """음성 주문 관련 커스텀 예외"""
     def __init__(self, message: str, code: str = None):
         self.message = message
         self.code = code
         super().__init__(self.message)
 
 def handle_stt_errors(result: dict) -> JSONResponse:
-    """STT 결과에 따른 에러 처리"""
     if result["success"]:
         return None
     
@@ -40,7 +37,6 @@ def handle_stt_errors(result: dict) -> JSONResponse:
     return JSONResponse(content=result)
 
 def validate_audio_file(audio_data: bytes, filename: str = None) -> None:
-    """오디오 파일 유효성 검사"""
     from config.naver_stt_settings import settings
     
     if len(audio_data) == 0:
@@ -56,7 +52,6 @@ def validate_audio_file(audio_data: bytes, filename: str = None) -> None:
         )
 
 def validate_language(lang: str) -> None:
-    """언어 유효성 검사"""
     from config.naver_stt_settings import settings
     
     if lang not in settings.SUPPORTED_LANGUAGES:
@@ -66,7 +61,6 @@ def validate_language(lang: str) -> None:
         )
 
 def validate_voice_order_result(order_info: dict) -> None:
-    """음성 주문 결과 유효성 검사"""
     from config.naver_stt_settings import settings
     
     # 메뉴 신뢰도 검사
@@ -87,7 +81,6 @@ def validate_voice_order_result(order_info: dict) -> None:
         )
 
 def handle_voice_order_errors(error: Exception) -> JSONResponse:
-    """음성 주문 에러 처리"""
     if isinstance(error, VoiceOrderException):
         return JSONResponse(
             status_code=400,

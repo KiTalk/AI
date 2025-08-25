@@ -23,7 +23,6 @@ from .logic_order_utils import (
     format_order_list,
     create_order_response,
     add_new_orders,
-    remove_order_by_menu_item,
     compare_orders,
     generate_update_message
 )
@@ -38,16 +37,12 @@ def patch_orders(session_id: str, order_items: List[Dict[str, Any]]) -> Dict[str
         except InvalidSessionStepException:
             session = validate_session(session_id, "completed")
 
-        # 기존 주문 목록 조회 - 안전하게 처리
         session_data = session.get("data", {})
 
         # 기존 주문 목록 조회
         if "order_at_once" in session_data:
-            # order-at-once에서 온 세션의 경우
-            existing_orders = []  # 빈 리스트로 초기화하거나
-            # 또는 order_at_once 데이터를 orders 형태로 변환
+            existing_orders = []
         else:
-            # 일반적인 경우
             existing_orders = session_data.get("orders", [])
 
         menu_names = [item["menu_item"] for item in order_items]
@@ -99,13 +94,12 @@ def add_additional_order(session_id: str, order_text: str) -> Dict[str, Any]:
         menu_texts = []
         for order in individual_orders:
             try:
-                # 간단한 메뉴명 추출 (validate 전에 예열용)
-                # 정확한 추출은 validate_single_order_simplified에서 수행
+                # 간단한 메뉴명 추출
                 words = order.strip().split()
                 if words:
-                    menu_texts.extend(words)  # 단어별로 추가
+                    menu_texts.extend(words)
             except:
-                continue  # 예열 실패는 무시
+                continue
 
         # 배치 임베딩 예열
         if menu_texts:
@@ -178,7 +172,7 @@ def remove_order_item(session_id: str, menu_id: int) -> Dict[str, Any]:
         logger.error(f"주문 항목 삭제 중 오류: {e}")
         raise OrderParsingException("주문 항목 삭제 중 오류가 발생했습니다")
 
-# 전체 주문 삭제 (주문 초기화)
+# 전체 주문 삭제
 def clear_all_orders(session_id: str) -> Dict[str, Any]:
     try:
         # 세션 검증

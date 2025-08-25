@@ -8,17 +8,15 @@ from qdrant_client import QdrantClient
 from config.naver_stt_settings import logger
 from services.redis_session_service import session_manager
 
-
 class OrderAtOnceService:
     def __init__(self):
         qdrant_url = os.getenv("QDRANT_URL")
-        api_key = os.getenv("QDRANT_API_KEY")
         if qdrant_url:
-            self.client = QdrantClient(url=qdrant_url, api_key=api_key)
+            self.client = QdrantClient(url=qdrant_url)
         else:
             host = os.getenv("QDRANT_HOST", "localhost")
             port = int(os.getenv("QDRANT_PORT", "6333"))
-            self.client = QdrantClient(host=host, port=port, api_key=api_key)
+            self.client = QdrantClient(host=host, port=port)
 
         self.menu_collection = os.getenv("MENU_COLLECTION", "menu")
         self.packaging_collection = os.getenv("PACKAGING_COLLECTION", "packaging_options")

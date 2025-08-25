@@ -96,7 +96,6 @@ def get_packaging_keywords() -> Dict[str, str]:
         "dine_in": "매장식사"
     }
 
-
 # 유사도 임계값 설정 캐싱
 @lru_cache(maxsize=8)
 def get_similarity_thresholds() -> Dict[str, float]:
@@ -108,7 +107,6 @@ def get_similarity_thresholds() -> Dict[str, float]:
         "popular_bonus": 0.03,
         "rapidfuzz_threshold": 85
     }
-
 
 # 설정 관련 모든 캐시 정리
 def clear_config_caches():
@@ -151,7 +149,6 @@ def warmup_config_cache():
     get_packaging_keywords()
     get_similarity_thresholds()
 
-
 # 단위 필수 여부 확인
 def is_unit_required() -> bool:
     config = get_quantity_config()
@@ -162,10 +159,8 @@ def get_default_temperature() -> str:
     config = get_temperature_config()
     return config.get("default_temperature", "hot")
 
-
 def get_menu_search_limit() -> int:
     return 5
 
-
 def get_vector_score_threshold() -> float:
-    return 0.2
+    pass

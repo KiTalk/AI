@@ -6,7 +6,6 @@ from config.naver_stt_settings import logger
 
 router = APIRouter(prefix="/stt", tags=["STT"])
 
-# STT 서비스 인스턴스 생성
 try:
     stt_service = NaverSTTService()
     logger.info("STT 서비스가 성공적으로 초기화되었습니다.")
@@ -19,7 +18,6 @@ async def speech_to_text(
     audio_file: UploadFile = File(...),
     lang: str = Form(default="Kor")
 ):
-    """음성 파일을 텍스트로 변환"""
     if not stt_service:
         raise HTTPException(status_code=500, detail="STT 서비스가 초기화되지 않았습니다.")
 

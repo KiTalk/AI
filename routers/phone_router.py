@@ -43,7 +43,6 @@ async def phone_choice(
             )
         else:
             # 전화번호 입력 안하고 바로 완료하는 경우
-            # complete_order 함수의 결과를 OrderCompleteResponse로 변환
             return OrderCompleteResponse(
                 message=result["message"],
                 order_id=result["order_id"],

@@ -1,12 +1,8 @@
 import requests
 from config.naver_stt_settings import settings, logger
-from models.stt_models import STTResponse
 
 class NaverSTTService:
-    """네이버 STT 서비스"""
-    
     def __init__(self):
-        # 설정 유효성 검사
         settings.validate()
         
         self.client_id = settings.NAVER_CLIENT_ID
@@ -20,7 +16,6 @@ class NaverSTTService:
         }
 
     def convert_speech_to_text(self, audio_data: bytes, lang: str = 'Kor') -> dict:
-        """음성 데이터를 텍스트로 변환"""
         try:
             params = {'lang': lang}
             response = requests.post(

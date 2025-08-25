@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
 # Qdrant 클라이언트 연결
-client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(url="http://qdrant:6333")
 
 # SentenceTransformer 모델 사용
 model = SentenceTransformer('jhgan/ko-sroberta-multitask')

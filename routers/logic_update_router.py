@@ -28,8 +28,7 @@ logger = logging.getLogger(__name__)
 # Router 생성
 router = APIRouter(prefix="/orders", tags=["Order Management"])
 
-
-# 1. 부분 주문 업데이트 (PUT 메서드)
+# 부분 주문 업데이트
 @router.put("/{session_id}/patch-update", response_model=OrderManagementResponse, summary="부분 주문 업데이트")
 async def update_all_orders_endpoint(session_id: str, request: UpdateAllOrdersRequest) -> OrderManagementResponse:
     try:
@@ -60,8 +59,7 @@ async def update_all_orders_endpoint(session_id: str, request: UpdateAllOrdersRe
             detail="서버 내부 오류가 발생했습니다"
         )
 
-
-# 2. 추가 주문 (POST 메서드)
+# 추가 주문 (POST 메서드)
 @router.post("/{session_id}/add", response_model=OrderManagementResponse, summary="추가 주문")
 async def add_order(session_id: str, request: AddOrderRequest) -> OrderManagementResponse:
     try:
@@ -89,7 +87,7 @@ async def add_order(session_id: str, request: AddOrderRequest) -> OrderManagemen
             detail="서버 내부 오류가 발생했습니다"
         )
 
-# 3. 주문 삭제 (DELETE 메서드)
+# 주문 삭제 (DELETE 메서드)
 @router.delete("/{session_id}/remove", response_model=OrderManagementResponse, summary="주문 삭제")
 async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderManagementResponse:
     try:
@@ -117,8 +115,7 @@ async def remove_order(session_id: str, request: RemoveOrderRequest) -> OrderMan
             detail="서버 내부 오류가 발생했습니다"
         )
 
-
-# 4. 전체 주문 삭제 (DELETE 메서드)
+# 전체 주문 삭제 (DELETE 메서드)
 @router.delete("/{session_id}/clear", response_model=OrderManagementResponse, summary="전체 주문 삭제")
 async def clear_orders(session_id: str) -> OrderManagementResponse:
     try:

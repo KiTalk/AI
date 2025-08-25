@@ -20,7 +20,6 @@ class Settings:
         # Qdrant 설정
         self.QDRANT_HOST: str = os.getenv('QDRANT_HOST', 'localhost')
         self.QDRANT_PORT: int = int(os.getenv('QDRANT_PORT', '6333'))
-        self.QDRANT_API_KEY: str | None = os.getenv('QDRANT_API_KEY', None)
 
         # CORS 설정
         cors_env = os.getenv('CORS_ORIGINS', 'http://localhost:3000,http://localhost:5173')

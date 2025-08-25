@@ -1,10 +1,10 @@
-# services/redis_session_service.py
 import redis
 import json
 import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,12 @@ class RedisSessionManager:
         return step in self.VALID_STEPS
 
     # Redis 연결 초기화
-    def __init__(self, redis_url: str = "redis://localhost:6379/0"):
+    def __init__(self, redis_url: str = None):
+        host = os.getenv("REDIS_HOST", "localhost")
+        self.redis_url = redis_url or f"redis://{host}:6379/0"
+
         try:
             self.redis_client = redis.from_url(redis_url, decode_responses=True)
-            # 연결 테스트
             self.redis_client.ping()
             logger.info(f"Redis 연결 성공: {redis_url}")
         except redis.RedisError as e:
@@ -45,7 +47,7 @@ class RedisSessionManager:
             # 30분
             self.redis_client.setex(
                 f"session:{session_id}",
-                expire_minutes * 60,  # 초 단위
+                expire_minutes * 60,
                 json.dumps(session_data)
             )
             logger.info(f"세션 생성 완료: {session_id}")
@@ -77,7 +79,6 @@ class RedisSessionManager:
                 logger.warning(f"업데이트할 세션 없음: {session_id}")
                 return False
 
-            # 세션 데이터 업데이트
             session["step"] = step
             session["data"].update(data)
             session["updated_at"] = datetime.now().isoformat()
@@ -143,14 +144,13 @@ class RedisSessionManager:
     # 만료된 세션 정리
     def cleanup_expired_sessions(self) -> int:
         try:
-            # Redis TTL로 자동 만료되므로 실제로는 불필요
-            # 하지만 수동 정리가 필요한 경우를 위해 구현
+            # 수동 정리가 필요한 경우를 위해 구현
             session_keys = self.redis_client.keys("session:*")
             expired_count = 0
 
             for key in session_keys:
                 ttl = self.redis_client.ttl(key)
-                if ttl == -2:  # 키가 존재하지 않음 (만료됨)
+                if ttl == -2:  # 키가 존재하지 않음
                     expired_count += 1
 
             logger.info(f"만료된 세션 정리 완료: {expired_count}개")
@@ -186,7 +186,6 @@ class RedisSessionManager:
         except redis.RedisError as e:
             logger.error(f"세션 통계 조회 실패: {e}")
             return {"error": str(e)}
-
 
 # 전역 Redis 세션 매니저 인스턴스
 redis_session_manager = RedisSessionManager()

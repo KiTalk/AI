@@ -14,17 +14,16 @@ _S3 = boto3.client(
 
 _BUCKET   = os.getenv("S3_BUCKET_MENU")
 _FOLDER   = os.getenv("S3_MENU_FOLDER", "menu").strip("/")
-_PUBLIC   = os.getenv("S3_PUBLIC_BASE")  # e.g. https://<bucket>.s3.<region>.amazonaws.com
+_PUBLIC   = os.getenv("S3_PUBLIC_BASE")
 
 def _safe_filename(original_name: str) -> str:
     base, ext = os.path.splitext(original_name)
     ext = (ext or ".bin").lower()
     return f"{uuid.uuid4().hex}_{int(time.time())}{ext}"
 
-def upload_menu_image(file_obj, original_name: str, owner_id: Optional[str] = None) -> str:
+def upload_menu_image(file_obj, original_name: str) -> str:
     key = f"{_FOLDER}/" + _safe_filename(original_name)
 
-    # Content-Type 추론
     ctype, _ = mimetypes.guess_type(original_name)
     ctype = ctype or "application/octet-stream"
 

@@ -27,7 +27,6 @@ from .logic_order_utils import (
     create_order_response,
     calculate_similarity_score
 )
-# 설정 캐시 매니저 import
 from config.config_cache import (
     get_compiled_separators_pattern,
     get_compiled_unit_pattern,
@@ -44,16 +43,14 @@ from config.config_cache import (
     get_vector_score_threshold
 )
 
-# 로거 설정
 logger = logging.getLogger(__name__)
 
-# Qdrant 클라이언트 싱글톤
 _client: Optional[QdrantClient] = None
 
 def get_qdrant_client() -> QdrantClient:
     global _client
     if _client is None:
-        _client = QdrantClient(url="http://localhost:6333")
+        _client = QdrantClient(url="http://qdrant:6333")
     return _client
 
 try:
@@ -81,7 +78,7 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
         except ImportError:
             from qdrant_client.models import Filter, FieldCondition, MatchValue
 
-        # 2) 공통 쿼리 함수 (temp 필터는 옵션)
+        # 공통 쿼리 함수 (temp 필터는 옵션)
         def run_query(temp_filter: str | None):
             flt = None
             if temp_filter is not None:
@@ -102,8 +99,7 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
             
             return client.query_points(**kwargs)
 
-        # 3) 온도 우선순위: 사용자지정 > DB온도 > 기본값
-        # 사용자가 온도를 명시했다면 해당 온도로만 검색, 아니면 모든 온도로 검색
+        # 온도 우선순위: 사용자지정 > DB온도 > 기본값
         if temp_detected:
             # 사용자가 온도를 명시한 경우: 해당 온도로만 검색
             tried = [user_temp]
@@ -131,10 +127,8 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
         thresholds = get_similarity_thresholds()
 
         if top[5] >= thresholds["menu_similarity_threshold"]:
-            # 온도 우선순위 적용: 사용자지정 > DB온도 > 기본값
-            final_temp = user_temp if temp_detected else top[4]  # DB온도 사용
+            final_temp = user_temp if temp_detected else top[4]
 
-            # 🔥 MySQL에서 가격 조회!
             menu_id = top[0]
 
             try:
@@ -172,8 +166,8 @@ def search_menu(menu_item: str) -> Dict[str, Any]:
 
 # 메뉴 검색 결과 처리
 def _process_menu_results(results, cleaned_menu: str) -> List[Tuple]:
-    logger.info(f"🔍 Qdrant 응답 타입: {type(results)}")
-    logger.info(f"🔍 Qdrant 응답 내용: {results}")
+    logger.info(f"Qdrant 응답 타입: {type(results)}")
+    logger.info(f"Qdrant 응답 내용: {results}")
 
     thresholds = get_similarity_thresholds()
     pop_bonus = thresholds["popular_bonus"]
@@ -183,7 +177,7 @@ def _process_menu_results(results, cleaned_menu: str) -> List[Tuple]:
     menu_names = []
     valid_results = []
 
-    for p in results.points:  # ← 여기만 수정!
+    for p in results.points:
         payload = p.payload or {}
         menu_id = payload.get("menu_id")
         menu_name = payload.get("menu_item")
@@ -217,14 +211,14 @@ def _process_menu_results(results, cleaned_menu: str) -> List[Tuple]:
 def parse_quantity_from_text(text: str) -> int:
     text = text.strip().lower()
 
-    # 1. 아라비아 숫자 추출
+    # 아라비아 숫자 추출
     number_pattern = get_compiled_number_pattern()
     match = number_pattern.search(text)
 
     if match:
         return int(match.group())
 
-    # 2. config 파일의 한글 숫자 확인
+    # config 파일의 한글 숫자 확인
     korean_numbers = get_korean_numbers()
 
     for korean_word, value in korean_numbers.items():
@@ -287,32 +281,23 @@ def split_multiple_orders(order_text: str) -> List[str]:
             protected_text = protected_text.replace(word, placeholder)
             replacements[placeholder] = word
 
-
-    # 1단계: config의 구분자로 분리 시도 (대비로 뒤에 예시 추가함)
     separator_pattern = get_compiled_separators_pattern()
     orders = separator_pattern.split(protected_text)
     orders = [order.strip() for order in orders if order.strip()]
 
-    # 구분자로 분리되었으면 반환
     if len(orders) > 1:
         return _restore_temperature_keywords(orders, replacements)
 
-    # 2단계: 패턴 기반 자동 분리 (config 기반)
     units = get_units_list()
     korean_numbers = get_korean_numbers()
 
-    # 동적으로 패턴 생성
     unit_pattern = '|'.join(re.escape(unit) for unit in units)
     korean_nums = '|'.join(re.escape(num) for num in korean_numbers.keys())
     quantity_pattern = rf'(\d+|{korean_nums})'
 
-    # 전체 패턴: 메뉴명 + 수량 + 단위(선택)
-    # 단위가 없어도 동작하도록 수정
     if is_unit_required():
-        # 단위 필수
         full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
     else:
-        # 단위 선택적
         full_pattern = rf'([가-힣\s__TEMP_\d+__]*?[가-힣]+[가-힣\s__TEMP_\d+__]*?)\s*{quantity_pattern}\s*({unit_pattern})?'
 
     matches = re.findall(full_pattern, order_text)
@@ -321,13 +306,13 @@ def split_multiple_orders(order_text: str) -> List[str]:
         # 여러 개 매치되면 각각을 주문으로 재구성
         parsed_orders = []
         for match in matches:
-            if len(match) == 3:  # (메뉴, 수량, 단위)
+            if len(match) == 3:
                 menu, qty, unit = match
                 if unit:
                     parsed_orders.append(f"{menu.strip()} {qty} {unit}")
                 else:
                     parsed_orders.append(f"{menu.strip()} {qty}")
-            elif len(match) == 2:  # (메뉴, 수량)
+            elif len(match) == 2:
                 menu, qty = match
                 parsed_orders.append(f"{menu.strip()} {qty}")
 
@@ -389,7 +374,6 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> None:
                 failed_orders.append(f"'{order}': 처리할 수 없습니다")
 
         validate_order_list(successful_orders)
-
         success = update_session_orders(session_id, successful_orders, "packaging")
 
         if not success:
@@ -399,13 +383,13 @@ def process_multiple_orders(session_id: str, orders: List[str]) -> None:
         logger.error(f"다중 주문 처리 실패: {e}")
         raise
 
-# 텍스트 파싱 ex) 짜장면 2개 -> (짜장면, 2개)
+# 텍스트 파싱
 def parse_single_order_simplified(order_text: str) -> Tuple[str, int]:
 
-    # 1. 수량 파싱 (실패시 0)
+    # 수량 파싱 (실패시 0)
     quantity = parse_quantity_from_text(order_text)
 
-    # 2. 메뉴 추출 (수량 제거 후)
+    # 메뉴 추출 (수량 제거 후)
     menu_text = extract_menu_from_text(order_text, quantity)
 
     # 메뉴가 없으면 예외 발생
@@ -417,10 +401,10 @@ def parse_single_order_simplified(order_text: str) -> Tuple[str, int]:
 # 텍스트에서 메뉴 추출
 def extract_menu_from_text(order_text: str, quantity: int) -> str:
 
-    # 1. 찾은 숫자 패턴 제거
+    # 찾은 숫자 패턴 제거
     text = re.sub(rf'{quantity}\s*\w*', '', order_text).strip()
 
-    # 2. 한글 숫자도 제거 (있다면)
+    # 한글 숫자도 제거 (있다면)
     korean_numbers = get_korean_numbers()
 
     for korean_word, value in korean_numbers.items():
@@ -490,7 +474,7 @@ def analyze_confirmation(text: str) -> bool:
 
     positive_words, negative_words = get_confirmation_keywords()
 
-    # 부정 먼저 체크 (더 명확한 거부 의사)
+    # 부정 먼저 체크
     for word in negative_words:
         if word in text:
             return False
@@ -500,13 +484,13 @@ def analyze_confirmation(text: str) -> bool:
         if word in text:
             return True
 
-    # 기본값은 True (긍정으로 처리)
+    # 기본값은 True
     return True
 
-# 벡터 + fuzzy 조합 온도 감지 (search_menu와 동일한 방식)
+# 벡터 + fuzzy 조합 온도 감지
 @lru_cache(maxsize=256)
 def detect_temperature(text: str) -> Tuple[str, str, bool]:
-    logger.info(f"🔍 온도감지 입력: '{text}'")
+    logger.info(f"온도감지 입력: '{text}'")
 
     cold_expressions, hot_expressions, _ = get_temperature_keywords()
     thresholds = get_similarity_thresholds()
@@ -516,11 +500,11 @@ def detect_temperature(text: str) -> Tuple[str, str, bool]:
     high_confidence_threshold = thresholds["temperature_high_confidence"]
     default_temp = get_default_temperature()
 
-    # 1단계: 단어 분리
+    # 단어 분리
     text_lower = text.lower()
     all_expressions = cold_expressions + hot_expressions
 
-    # 2단계: 각 단어를 온도 키워드와 비교
+    # 각 단어를 온도 키워드와 비교
     best_temp = default_temp
     best_word = ""
     highest_score = 0.0
@@ -528,7 +512,7 @@ def detect_temperature(text: str) -> Tuple[str, str, bool]:
 
     for word in all_expressions:
         if word in text_lower:
-            final_score = 1.0  # 포함되면 100% 매칭으로 처리
+            final_score = 1.0
 
             if final_score > highest_score and final_score > threshold:
                 highest_score = final_score
@@ -536,12 +520,12 @@ def detect_temperature(text: str) -> Tuple[str, str, bool]:
                 best_temp = "ice" if word in cold_expressions else "hot"
                 temp_detected = True
 
-    # 3단계: 감지된 단어 제거
+    # 감지된 단어 제거
     cleaned_text = text
     if best_word and highest_score > high_confidence_threshold:
         cleaned_text = text_lower.replace(best_word, "").strip()
 
-    logger.info(f"🔍 감지결과 - 온도: {best_temp}, 제거단어: '{best_word}', 정리된텍스트: '{cleaned_text}', 감지됨: {temp_detected}")
+    logger.info(f"감지결과 - 온도: {best_temp}, 제거단어: '{best_word}', 정리된텍스트: '{cleaned_text}', 감지됨: {temp_detected}")
 
     return cleaned_text, best_temp, temp_detected
 
@@ -567,7 +551,7 @@ def add_profiles_to_orders(session_id: str) -> List[Dict[str, Any]]:
             if menu_id:
                 try:
                     profile = simple_menu_db.get_user_profile(menu_id)
-                    enhanced_order["profile"] = profile  # null이면 null로 저장
+                    enhanced_order["profile"] = profile
                 except Exception as e:
                     logger.error(f"menu_id {menu_id} Profile 조회 오류: {e}")
                     enhanced_order["profile"] = None

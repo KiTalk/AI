@@ -16,11 +16,10 @@ class OwnerMenuService:
         popular: bool, profile_file: UploadFile | None
     ) -> OwnerMenuCreateResponse:
 
-        # (name, temperature) 유니크 체크
         if find_menu_id_by_name_temp(name, temperature) is not None:
             raise HTTPException(status_code=409, detail="이미 존재하는 (name, temperature) 메뉴입니다.")
 
-        # 1) 파일이 있으면 S3 업로드 → URL만 확보 (이미지 파일만 허용)
+        # 파일이 있으면 S3 업로드 → URL만 확보 (이미지 파일만 허용)
         profile_url = None
         if profile_file is not None:
             if profile_file.content_type and not profile_file.content_type.startswith("image/"):
@@ -35,7 +34,7 @@ class OwnerMenuService:
         try:
             conn.autocommit(False)
 
-            # 2) MySQL INSERT (profile_url은 있으면 저장, 없으면 NULL)
+            # MySQL INSERT
             ok, new_id, err = insert_menu_tx(
                 conn,
                 name=name,
@@ -49,7 +48,6 @@ class OwnerMenuService:
                 conn.rollback()
                 raise HTTPException(status_code=500, detail=f"메뉴 저장 실패: {err or 'unknown error'}")
 
-            # 3) Qdrant에는 5개 필드만 저장
             try:
                 upsert_menu_point(
                     id_=new_id,

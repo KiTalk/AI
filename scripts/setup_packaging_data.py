@@ -2,7 +2,7 @@ from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from qdrant_client.models import VectorParams, Distance, PointStruct
 
-client = QdrantClient(url="http://localhost:6333")
+client = QdrantClient(url="http://qdrant:6333")
 model = SentenceTransformer("jhgan/ko-sroberta-multitask")
 
 PACKAGING_DATA = [

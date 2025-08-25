@@ -87,7 +87,7 @@ setup_swagger(app)
 # CORS 설정 (프론트엔드와 통신을 위해)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

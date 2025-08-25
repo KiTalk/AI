@@ -2,7 +2,6 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from .logic_response_models import OrderItem
 
-
 class PhoneChoiceResponse(BaseModel):
     message: str = Field(..., description="응답 메시지")
     session_id: str = Field(..., description="세션 ID")
@@ -16,7 +15,6 @@ class PhoneChoiceResponse(BaseModel):
                 "next_step": "전화번호 입력"
             }
         }
-
 
 class OrderCompleteResponse(BaseModel):
     message: str = Field(..., description="완료 메시지")

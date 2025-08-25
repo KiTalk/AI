@@ -6,7 +6,6 @@ router = APIRouter(tags=["Health"])
 
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
-    """헬스 체크"""
     # STT 서비스 사용 가능 여부 확인
     try:
         from services.naver_stt_service import NaverSTTService
@@ -26,7 +25,6 @@ async def health_check():
 
 @router.get("/languages", response_model=LanguagesResponse)
 async def get_supported_languages():
-    """지원되는 언어 목록"""
     language_map = {
         "Kor": "한국어",
         "Eng": "영어", 

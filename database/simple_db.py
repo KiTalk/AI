@@ -126,6 +126,5 @@ class SimpleMenuDB:
         finally:
             connection.close()
 
-
 # 전역 인스턴스
 simple_menu_db = SimpleMenuDB()
